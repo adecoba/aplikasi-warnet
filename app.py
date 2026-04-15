@@ -176,11 +176,15 @@ if menu == "📊 Dashboard":
         # Siapkan data end_time dalam format ISO untuk JavaScript
         sessions_js = []
         for _, row in active_sessions.iterrows():
+            # Konversi datetime ke timestamp milisecond
+            start_ts = int(row['start_time'].timestamp() * 1000)
+            end_ts = int(row['end_time'].timestamp() * 1000)
+            
             sessions_js.append({
                 "pc": int(row['pc_number']),
                 "name": str(row['customer_name']),
-                "start": str(row['start_time']),
-                "end": str(row['end_time']),
+                "start_ts": start_ts,
+                "end_ts": end_ts,
                 "duration": int(row['duration_minutes']),
                 "price": int(row['total_price'])
             })
@@ -349,21 +353,12 @@ if menu == "📊 Dashboard":
             <div class="monitor-grid" id="session-grid"></div>
         </div>
 
-        <script>
+<script>
 const sessions = {sessions_json};
 
-function parseDate(str) {{
-    // Parse string sebagai GMT+7 (data dari server sudah GMT+7)
-    // Format: "2026-04-15 22:01:03.349012"
-    const [datePart, timePart] = str.split(' ');
-    const [year, month, day] = datePart.split('-');
-    const [hour, minute, secondPart] = timePart.split(':');
-    const second = parseFloat(secondPart);
-    const ms = Math.round((second - Math.floor(second)) * 1000);
-    
-    // Buat Date object (local time browser)
-    // Data sudah GMT+7, langsung gunakan
-    return new Date(year, month-1, day, hour, minute, Math.floor(second), ms);
+// Langsung pakai timestamp, tidak perlu parse string
+function parseDate(timestamp) {{
+    return new Date(timestamp);
 }}
 
 function formatCountdown(ms) {{
@@ -375,8 +370,8 @@ function formatCountdown(ms) {{
     return [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
 }}
 
-function formatTime(dateStr) {{
-    const d = parseDate(dateStr);
+function formatTime(timestamp) {{
+    const d = new Date(timestamp);
     return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
 }}
 
@@ -401,7 +396,7 @@ function buildCards() {{
                 <span class="status-dot" id="dot-${{i}}"></span>
             </div>
             <div class="customer-name">${{s.name}}</div>
-            <div class="session-meta">Mulai ${{formatTime(s.start)}} &rarr; Selesai ${{formatTime(s.end)}} &bull; ${{s.duration}} menit</div>
+            <div class="session-meta">Mulai ${{formatTime(s.start_ts)}} &rarr; Selesai ${{formatTime(s.end_ts)}} &bull; ${{s.duration}} menit</div>
             <div class="countdown-block">
                 <div>
                     <div class="countdown-label">Sisa Waktu</div>
@@ -424,8 +419,8 @@ function tick() {{
     document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
 
     sessions.forEach((s, i) => {{
-        const endTime = parseDate(s.end);
-        const startTime = parseDate(s.start);
+        const endTime = parseDate(s.end_ts);
+        const startTime = parseDate(s.start_ts);
         const totalMs = endTime - startTime;
         const remainMs = endTime - now;
         const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
