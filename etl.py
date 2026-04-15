@@ -19,7 +19,7 @@ def init_warehouse():
     """Buat skema Data Warehouse jika belum ada."""
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DW_PATH)
-    cur  = conn.cursor()
+    cur = conn.cursor()
 
     cur.execute('''
         CREATE TABLE IF NOT EXISTS dim_time (
@@ -88,7 +88,7 @@ def init_warehouse():
 
 def extract():
     oltp = sqlite3.connect(OLTP_PATH)
-    dw   = sqlite3.connect(DW_PATH)
+    dw = sqlite3.connect(DW_PATH)
 
     existing = pd.read_sql_query("SELECT session_id FROM fact_sessions", dw)
     existing_ids = set(existing['session_id'].tolist()) if not existing.empty else set()
@@ -125,7 +125,7 @@ def transform(raw_df: pd.DataFrame):
     df = raw_df.copy()
 
     df['start_time'] = pd.to_datetime(df['start_time'])
-    df['end_time']   = pd.to_datetime(df['end_time'])
+    df['end_time'] = pd.to_datetime(df['end_time'])
 
     df['full_date'] = df['start_time'].dt.date
     dates = df['full_date'].unique()
@@ -134,19 +134,19 @@ def transform(raw_df: pd.DataFrame):
     for d in dates:
         dt = pd.Timestamp(d)
         time_rows.append({
-            'full_date'   : str(d),
-            'day_of_week' : dt.strftime('%A'),
-            'day_number'  : dt.weekday(),
-            'week_number' : dt.isocalendar()[1],
+            'full_date': str(d),
+            'day_of_week': dt.strftime('%A'),
+            'day_number': dt.weekday(),
+            'week_number': dt.isocalendar()[1],
             'month_number': dt.month,
-            'month_name'  : dt.strftime('%B'),
-            'quarter'     : (dt.month - 1) // 3 + 1,
-            'year'        : dt.year,
-            'is_weekend'  : 1 if dt.weekday() >= 5 else 0
+            'month_name': dt.strftime('%B'),
+            'quarter': (dt.month - 1) // 3 + 1,
+            'year': dt.year,
+            'is_weekend': 1 if dt.weekday() >= 5 else 0
         })
     dim_time_df = pd.DataFrame(time_rows)
 
-    dim_pc_df = df[['pc_id','pc_number','specs']].drop_duplicates('pc_id')
+    dim_pc_df = df[['pc_id', 'pc_number', 'specs']].drop_duplicates('pc_id')
 
     df['duration_label'] = df['duration_minutes'].apply(
         lambda x: f"{x//60} Jam" if x % 60 == 0 else f"{x//60}j {x%60}m"
@@ -155,23 +155,23 @@ def transform(raw_df: pd.DataFrame):
         lambda r: round(r['total_price'] / r['duration_minutes'], 2) if r['duration_minutes'] > 0 else 0,
         axis=1
     )
-    dim_package_df = df[['duration_minutes','duration_label','price_per_minute']].drop_duplicates('duration_minutes')
+    dim_package_df = df[['duration_minutes', 'duration_label', 'price_per_minute']].drop_duplicates('duration_minutes')
 
-    df['start_hour']      = df['start_time'].dt.hour
+    df['start_hour'] = df['start_time'].dt.hour
     df['revenue_per_min'] = df['price_per_minute']
 
     return {
-        'dim_time'   : dim_time_df,
-        'dim_pc'     : dim_pc_df,
+        'dim_time': dim_time_df,
+        'dim_pc': dim_pc_df,
         'dim_package': dim_package_df,
-        'raw'        : df
+        'raw': df
     }
 
 def load(transformed: dict):
     if transformed is None:
         return 0
 
-    dw  = sqlite3.connect(DW_PATH)
+    dw = sqlite3.connect(DW_PATH)
     cur = dw.cursor()
     raw = transformed['raw']
     loaded = 0
@@ -202,12 +202,12 @@ def load(transformed: dict):
 
     dw.commit()
 
-    time_map    = {r[0]: r[1] for r in cur.execute("SELECT full_date, time_id FROM dim_time")}
+    time_map = {r[0]: r[1] for r in cur.execute("SELECT full_date, time_id FROM dim_time")}
     package_map = {r[0]: r[1] for r in cur.execute("SELECT duration_minutes, package_id FROM dim_package")}
 
     for _, row in raw.iterrows():
-        date_str   = str(row['full_date'])
-        time_id    = time_map.get(date_str)
+        date_str = str(row['full_date'])
+        time_id = time_map.get(date_str)
         package_id = package_map.get(int(row['duration_minutes']))
 
         if time_id is None or package_id is None:
@@ -232,12 +232,12 @@ def run_etl():
     init_warehouse()
     timestamp = get_now_gmt7()
     result = {
-        'timestamp'       : timestamp,
-        'rows_extracted'  : 0,
+        'timestamp': timestamp,
+        'rows_extracted': 0,
         'rows_transformed': 0,
-        'rows_loaded'     : 0,
-        'status'          : 'success',
-        'message'         : ''
+        'rows_loaded': 0,
+        'status': 'success',
+        'message': ''
     }
 
     try:
@@ -252,11 +252,11 @@ def run_etl():
         result['message'] = f"ETL selesai: {loaded} sesi baru dimuat ke Data Warehouse."
 
     except Exception as e:
-        result['status']  = 'error'
+        result['status'] = 'error'
         result['message'] = str(e)
 
     try:
-        dw  = sqlite3.connect(DW_PATH)
+        dw = sqlite3.connect(DW_PATH)
         cur = dw.cursor()
         cur.execute('''
             INSERT INTO etl_log
@@ -338,7 +338,7 @@ def query_busiest_hours():
     '''
 
     hour_df = pd.read_sql_query(hour_q, conn)
-    day_df  = pd.read_sql_query(day_q, conn)
+    day_df = pd.read_sql_query(day_q, conn)
     conn.close()
     return hour_df, day_df
 
@@ -388,14 +388,14 @@ def query_etl_log():
 
 def get_dw_summary():
     conn = get_dw_connection()
-    facts    = pd.read_sql_query("SELECT COUNT(*) AS n FROM fact_sessions", conn).iloc[0]['n']
+    facts = pd.read_sql_query("SELECT COUNT(*) AS n FROM fact_sessions", conn).iloc[0]['n']
     dim_time = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_time", conn).iloc[0]['n']
-    dim_pc   = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_pc", conn).iloc[0]['n']
-    dim_pkg  = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_package", conn).iloc[0]['n']
+    dim_pc = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_pc", conn).iloc[0]['n']
+    dim_pkg = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_package", conn).iloc[0]['n']
     conn.close()
     return {
         'fact_sessions': int(facts),
-        'dim_time'     : int(dim_time),
-        'dim_pc'       : int(dim_pc),
-        'dim_package'  : int(dim_pkg)
+        'dim_time': int(dim_time),
+        'dim_pc': int(dim_pc),
+        'dim_package': int(dim_pkg)
     }

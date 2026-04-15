@@ -172,13 +172,29 @@ if menu == "📊 Dashboard":
     
     # Daftar sesi aktif dengan countdown real-time
     st.subheader("🟢 Sesi Aktif Saat Ini")
+   # Di bagian DASHBOARD, ganti sessions_js menjadi:
+
     if not active_sessions.empty:
-        # Siapkan data end_time dalam format ISO untuk JavaScript
         sessions_js = []
         for _, row in active_sessions.iterrows():
-            # Konversi datetime ke timestamp milisecond
-            start_ts = int(row['start_time'].timestamp() * 1000)
-            end_ts = int(row['end_time'].timestamp() * 1000)
+            # Konversi ke timestamp dengan aman
+            start_str = str(row['start_time'])
+            end_str = str(row['end_time'])
+            
+            # Parse string ke datetime
+            if '.' in start_str:
+                start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S.%f')
+            else:
+                start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S')
+            
+            if '.' in end_str:
+                end_dt = datetime.strptime(end_str, '%Y-%m-%d %H:%M:%S.%f')
+            else:
+                end_dt = datetime.strptime(end_str, '%Y-%m-%d %H:%M:%S')
+            
+            EPOCH = datetime(1970, 1, 1)
+            start_ts = int((start_dt - timedelta(hours=7) - EPOCH).total_seconds() * 1000)
+            end_ts   = int((end_dt   - timedelta(hours=7) - EPOCH).total_seconds() * 1000)
             
             sessions_js.append({
                 "pc": int(row['pc_number']),

@@ -6,7 +6,6 @@ DB_PATH = "data/warnet.db"
 
 def get_now_gmt7():
     """Mendapatkan waktu sekarang dalam GMT+7 (Asia/Jakarta)"""
-    # UTC + 7 jam = GMT+7
     return datetime.utcnow() + timedelta(hours=7)
 
 def init_database():
@@ -21,7 +20,7 @@ def init_database():
             pc_number INTEGER UNIQUE NOT NULL,
             status TEXT DEFAULT 'available',
             current_user TEXT,
-            session_start TIME,
+            session_start TIMESTAMP,
             specs TEXT DEFAULT 'Standard'
         )
     ''')
@@ -239,7 +238,10 @@ def add_time_session(pc_id, additional_minutes):
     session = cursor.fetchone()
     if session:
         session_id, current_end, current_price, current_duration = session
-        new_end = datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S') + timedelta(minutes=additional_minutes)
+        # Parse string ke datetime
+        if isinstance(current_end, str):
+            current_end = datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S')
+        new_end = current_end + timedelta(minutes=additional_minutes)
         new_duration = current_duration + additional_minutes
         
         additional_price = additional_minutes * 100
