@@ -180,9 +180,9 @@ def get_hourly_usage():
     # UBAH: menggunakan datetime dengan offset GMT+8 di SQLite
     # SQLite tidak native timezone, jadi kita konversi saat query
     query = '''
-        SELECT strftime('%H', datetime(start_time, '+8 hours')) as hour, COUNT(*) as total
+        SELECT strftime('%H', datetime(start_time, '+7 hours')) as hour, COUNT(*) as total
         FROM sessions
-        WHERE date(datetime(start_time, '+8 hours')) = date('now', '+8 hours')
+        WHERE date(datetime(start_time, '+7 hours')) = date('now', '+7 hours')
         GROUP BY hour
         ORDER BY hour
     '''
