@@ -18,9 +18,17 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 import os
+import pytz
+
 
 OLTP_PATH = "data/warnet.db"
 DW_PATH   = "data/warehouse.db"
+
+# TAMBAHKAN TIMEZONE
+TIMEZONE = pytz.timezone('Asia/Makassar')
+
+def get_current_time():
+    return datetime.now(TIMEZONE)
 
 # ─────────────────────────────────────────────
 # INISIALISASI DATA WAREHOUSE (Star Schema)
@@ -300,7 +308,7 @@ def run_etl():
     Mengembalikan dict hasil untuk ditampilkan di UI.
     """
     init_warehouse()
-    timestamp = datetime.now()
+    timestamp = get_current_time()
     result = {
         'timestamp'       : timestamp,
         'rows_extracted'  : 0,

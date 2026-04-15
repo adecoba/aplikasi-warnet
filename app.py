@@ -6,6 +6,31 @@ from datetime import datetime, timedelta
 import numpy as np
 import database as db
 import etl
+import pytz
+
+timezone = pytz.timezone('Asia/Makassar')
+
+sessions_js = []
+for _, row in active_sessions.iterrows():
+    # Konversi waktu ke GMT+8 sebelum dikirim ke JavaScript
+    start_time = datetime.fromisoformat(str(row['start_time']))
+    end_time = datetime.fromisoformat(str(row['end_time']))
+    
+    # Jika waktu masih naive (tanpa timezone), beri timezone UTC lalu konversi
+    if start_time.tzinfo is None:
+        start_time = pytz.UTC.localize(start_time).astimezone(timezone)
+    if end_time.tzinfo is None:
+        end_time = pytz.UTC.localize(end_time).astimezone(timezone)
+    
+    sessions_js.append({
+        "pc": int(row['pc_number']),
+        "name": str(row['customer_name']),
+        "start": start_time.isoformat(),
+        "end": end_time.isoformat(),
+        "duration": int(row['duration_minutes']),
+        "price": int(row['total_price']),
+        "timezone": "GMT+8"  # tambahkan info timezone
+    })
 
 # Konfigurasi halaman
 st.set_page_config(
