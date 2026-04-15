@@ -350,118 +350,113 @@ if menu == "📊 Dashboard":
         </div>
 
         <script>
-        const sessions = {sessions_json};
 
-        function parseDate(str) {{
-            // Handle format: "2026-04-15 22:01:03.349012"
-            // Parse as GMT+7 (Asia/Jakarta)
-            const date = new Date(str.replace(' ', 'T'));
-            // Get timezone offset for GMT+7 (420 minutes)
-            const gmt7Offset = 7 * 60;
-            const localOffset = date.getTimezoneOffset();
-            const adjustedDate = new Date(date.getTime() + (localOffset + gmt7Offset) * 60000);
-            return adjustedDate;
-        }}
+const sessions = {sessions_json};
 
-        function getCurrentTimeGMT7() {{
-            const now = new Date();
-            // Convert current time to GMT+7
-            const gmt7Offset = 7 * 60;
-            const localOffset = now.getTimezoneOffset();
-            const gmt7Time = new Date(now.getTime() + (localOffset + gmt7Offset) * 60000);
-            return gmt7Time;
-        }}
+function parseDate(str) {{
+    // Parse manual: "2026-04-15 22:01:03.349012"
+    const [datePart, timePart] = str.split(' ');
+    const [year, month, day] = datePart.split('-');
+    const [hour, minute, secondPart] = timePart.split(':');
+    const second = parseFloat(secondPart);
+    const ms = Math.round((second - Math.floor(second)) * 1000);
+    
+    // Buat tanggal langsung dengan nilai yang sama (tanpa konversi timezone)
+    // Menggunakan Date.UTC tapi dikurangi 7 jam karena data dari GMT+7
+    // Atau lebih mudah: gunakan setHours manual
+    const date = new Date(year, month-1, day, hour, minute, Math.floor(second), ms);
+    return date;
+}}
 
-        function formatCountdown(ms) {{
-            if (ms <= 0) return '00:00:00';
-            const totalSec = Math.floor(ms / 1000);
-            const h = Math.floor(totalSec / 3600);
-            const m = Math.floor((totalSec % 3600) / 60);
-            const s = totalSec % 60;
-            return [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
-        }}
+function formatCountdown(ms) {{
+    if (ms <= 0) return '00:00:00';
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
+}}
 
-        function formatTime(dateStr) {{
-            const d = parseDate(dateStr);
-            return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit', timeZone: 'Asia/Jakarta'}});
-        }}
+function formatTime(dateStr) {{
+    const d = parseDate(dateStr);
+    return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
+}}
 
-        function getState(ms, totalMs) {{
-            const pct = ms / totalMs;
-            if (ms <= 0) return 'danger';
-            if (pct <= 0.15) return 'danger';
-            if (pct <= 0.30) return 'warning';
-            return 'normal';
-        }}
+function getState(ms, totalMs) {{
+    const pct = ms / totalMs;
+    if (ms <= 0) return 'danger';
+    if (pct <= 0.15) return 'danger';
+    if (pct <= 0.30) return 'warning';
+    return 'normal';
+}}
 
-        function buildCards() {{
-            const grid = document.getElementById('session-grid');
-            grid.innerHTML = '';
-            sessions.forEach((s, i) => {{
-                const card = document.createElement('div');
-                card.className = 'session-card';
-                card.id = 'card-' + i;
-                card.innerHTML = `
-                    <div class="card-header">
-                        <span class="pc-badge">PC ${{s.pc}}</span>
-                        <span class="status-dot" id="dot-${{i}}"></span>
+function buildCards() {{
+    const grid = document.getElementById('session-grid');
+    grid.innerHTML = '';
+    sessions.forEach((s, i) => {{
+        const card = document.createElement('div');
+        card.className = 'session-card';
+        card.id = 'card-' + i;
+        card.innerHTML = `
+            <div class="card-header">
+                <span class="pc-badge">PC ${{s.pc}}</span>
+                <span class="status-dot" id="dot-${{i}}"></span>
+            </div>
+            <div class="customer-name">${{s.name}}</div>
+            <div class="session-meta">Mulai ${{formatTime(s.start)}} &rarr; Selesai ${{formatTime(s.end)}} &bull; ${{s.duration}} menit</div>
+            <div class="countdown-block">
+                <div>
+                    <div class="countdown-label">Sisa Waktu</div>
+                    <div class="countdown-time" id="timer-${{i}}">--:--:--</div>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="bar-${{i}}" style="width:100%"></div>
                     </div>
-                    <div class="customer-name">${{s.name}}</div>
-                    <div class="session-meta">Mulai ${{formatTime(s.start)}} &rarr; Selesai ${{formatTime(s.end)}} &bull; ${{s.duration}} menit</div>
-                    <div class="countdown-block">
-                        <div>
-                            <div class="countdown-label">Sisa Waktu</div>
-                            <div class="countdown-time" id="timer-${{i}}">--:--:--</div>
-                        </div>
-                        <div class="progress-wrap">
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar-fill" id="bar-${{i}}" style="width:100%"></div>
-                            </div>
-                            <div class="progress-pct" id="pct-${{i}}">100%</div>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
-            }});
+                    <div class="progress-pct" id="pct-${{i}}">100%</div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+    }});
+}}
+
+function tick() {{
+    const now = new Date();
+    document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
+
+    sessions.forEach((s, i) => {{
+        const endTime = parseDate(s.end);
+        const startTime = parseDate(s.start);
+        const totalMs = endTime - startTime;
+        const remainMs = endTime - now;
+        const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
+        const state = getState(remainMs, totalMs);
+
+        const timerEl = document.getElementById('timer-' + i);
+        const barEl = document.getElementById('bar-' + i);
+        const pctEl = document.getElementById('pct-' + i);
+        const dotEl = document.getElementById('dot-' + i);
+        const cardEl = document.getElementById('card-' + i);
+
+        if (timerEl) {{
+            timerEl.textContent = remainMs > 0 ? formatCountdown(remainMs) : 'HABIS';
+            timerEl.className = 'countdown-time' + (state !== 'normal' ? ' ' + state : '');
         }}
-
-        function tick() {{
-            const now = getCurrentTimeGMT7();
-            // Live clock in GMT+7
-            document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID', {{timeZone: 'Asia/Jakarta'}});
-
-            sessions.forEach((s, i) => {{
-                const endTime = parseDate(s.end);
-                const startTime = parseDate(s.start);
-                const totalMs = endTime - startTime;
-                const remainMs = endTime - now;
-                const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
-                const state = getState(remainMs, totalMs);
-
-                const timerEl = document.getElementById('timer-' + i);
-                const barEl = document.getElementById('bar-' + i);
-                const pctEl = document.getElementById('pct-' + i);
-                const dotEl = document.getElementById('dot-' + i);
-                const cardEl = document.getElementById('card-' + i);
-
-                if (timerEl) {{
-                    timerEl.textContent = remainMs > 0 ? formatCountdown(remainMs) : 'HABIS';
-                    timerEl.className = 'countdown-time' + (state !== 'normal' ? ' ' + state : '');
-                }}
-                if (barEl) {{
-                    barEl.style.width = pct.toFixed(1) + '%';
-                    barEl.className = 'progress-bar-fill' + (state !== 'normal' ? ' ' + state : '');
-                }}
-                if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
-                if (dotEl) dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
-                if (cardEl) cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
-            }});
+        if (barEl) {{
+            barEl.style.width = pct.toFixed(1) + '%';
+            barEl.className = 'progress-bar-fill' + (state !== 'normal' ? ' ' + state : '');
         }}
+        if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
+        if (dotEl) dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
+        if (cardEl) cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
+    }});
+}}
 
-        buildCards();
-        tick();
-        setInterval(tick, 1000);
-        </script>
+buildCards();
+tick();
+setInterval(tick, 1000);
+</script>
         """
 
         st.components.v1.html(countdown_html, height=max(200, (len(sessions_js) // 3 + 1) * 220 + 80), scrolling=False)
