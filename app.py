@@ -450,7 +450,7 @@ if menu == "📊 Dashboard":
         </script>
         """
 
-        # Sebelum mengirim ke JavaScript, pastikan waktu sudah dalam GMT+8
+        # Sebelum mengirim ke JavaScript, pastikan waktu sudah dalam GMT+7
         from datetime import datetime
         import pytz
 
@@ -458,7 +458,7 @@ if menu == "📊 Dashboard":
 
         sessions_js = []
         for _, row in active_sessions.iterrows():
-            # Konversi waktu ke GMT+8 sebelum dikirim ke JavaScript
+            # Konversi waktu ke GMT+7 sebelum dikirim ke JavaScript
             start_time = datetime.fromisoformat(str(row['start_time']))
             end_time = datetime.fromisoformat(str(row['end_time']))
             

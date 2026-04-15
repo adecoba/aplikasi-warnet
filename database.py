@@ -7,11 +7,11 @@ DB_PATH = "data/warnet.db"
 TIMEZONE = pytz.timezone('Asia/Jakarta')
 
 def get_current_time():
-    """Mengembalikan waktu sekarang dalam GMT+8"""
+    """Mengembalikan waktu sekarang dalam GMT+7"""
     return datetime.now(TIMEZONE)
 
 def get_current_date():
-    """Mengembalikan tanggal sekarang dalam GMT+8"""
+    """Mengembalikan tanggal sekarang dalam GMT+7"""
     return get_current_time().date()
 
 def init_database():
@@ -164,7 +164,7 @@ def get_active_sessions():
 
 def get_today_revenue():
     conn = get_connection()
-    # UBAH: menggunakan get_current_date() untuk GMT+8
+    # UBAH: menggunakan get_current_date() untuk GMT+7
     today = get_current_date().strftime('%Y-%m-%d')
     query = '''
         SELECT COALESCE(SUM(total_price), 0) as revenue, COUNT(*) as sessions
@@ -177,7 +177,7 @@ def get_today_revenue():
 
 def get_hourly_usage():
     conn = get_connection()
-    # UBAH: menggunakan datetime dengan offset GMT+8 di SQLite
+    # UBAH: menggunakan datetime dengan offset GMT+7 di SQLite
     # SQLite tidak native timezone, jadi kita konversi saat query
     query = '''
         SELECT strftime('%H', datetime(start_time, '+7 hours')) as hour, COUNT(*) as total
