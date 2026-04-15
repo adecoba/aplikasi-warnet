@@ -353,12 +353,28 @@ if menu == "📊 Dashboard":
         const sessions = {sessions_json};
 
         function parseDate(str) {{
-            // Handle format: "2026-04-15 22:01:03.349012"
-            return new Date(str.replace(' ', 'T'));
+            // Handle SQLite datetime format: "2026-04-15 22:01:03.349012"
+            // atau format ISO: "2026-04-15T22:01:03.349012"
+            if (!str) return null;
+            
+            // Bersihkan string dan parse
+            let cleanStr = str.replace(' ', 'T');
+            // Jika tidak ada timezone info, tambahkan +07:00 untuk WIB
+            if (!cleanStr.includes('+') && !cleanStr.includes('Z')) {{
+                cleanStr = cleanStr + '+07:00';
+            }}
+            
+            const date = new Date(cleanStr);
+            // Validasi apakah date valid
+            if (isNaN(date.getTime())) {{
+                console.error('Invalid date:', str);
+                return null;
+            }}
+            return date;
         }}
 
         function formatCountdown(ms) {{
-            if (ms <= 0) return '00:00:00';
+            if (ms <= 0 || isNaN(ms)) return '00:00:00';
             const totalSec = Math.floor(ms / 1000);
             const h = Math.floor(totalSec / 3600);
             const m = Math.floor((totalSec % 3600) / 60);
@@ -368,12 +384,18 @@ if menu == "📊 Dashboard":
 
         function formatTime(dateStr) {{
             const d = parseDate(dateStr);
-            return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
+            if (!d) return '--:--';
+            return d.toLocaleTimeString('id-ID', {{
+                hour:'2-digit', 
+                minute:'2-digit',
+                hour12: false,
+                timeZone: 'Asia/Jakarta'
+            }});
         }}
 
         function getState(ms, totalMs) {{
+            if (isNaN(ms) || ms <= 0) return 'danger';
             const pct = ms / totalMs;
-            if (ms <= 0) return 'danger';
             if (pct <= 0.15) return 'danger';
             if (pct <= 0.30) return 'warning';
             return 'normal';
@@ -381,8 +403,13 @@ if menu == "📊 Dashboard":
 
         function buildCards() {{
             const grid = document.getElementById('session-grid');
+            if (!grid) return;
             grid.innerHTML = '';
+            
             sessions.forEach((s, i) => {{
+                // Debug: log session data
+  
+                
                 const card = document.createElement('div');
                 card.className = 'session-card';
                 card.id = 'card-' + i;
@@ -391,8 +418,8 @@ if menu == "📊 Dashboard":
                         <span class="pc-badge">PC ${{s.pc}}</span>
                         <span class="status-dot" id="dot-${{i}}"></span>
                     </div>
-                    <div class="customer-name">${{s.name}}</div>
-                    <div class="session-meta">Mulai ${{formatTime(s.start)}} &rarr; Selesai ${{formatTime(s.end)}} &bull; ${{s.duration}} menit</div>
+                    <div class="customer-name">${{escapeHtml(s.name)}}</div>
+                    <div class="session-meta">Mulai ${{formatTime(s.start)}} → Selesai ${{formatTime(s.end)}} • ${{s.duration}} menit</div>
                     <div class="countdown-block">
                         <div>
                             <div class="countdown-label">Sisa Waktu</div>
@@ -410,25 +437,54 @@ if menu == "📊 Dashboard":
             }});
         }}
 
+        function escapeHtml(text) {{
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }}
+
         function tick() {{
             const now = new Date();
-            // Live clock
-            document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
-
+            // Live clock dengan WIB
+            const wibTime = now.toLocaleTimeString('id-ID', {{
+                timeZone: 'Asia/Jakarta',
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }});
+            const clockEl = document.getElementById('live-clock');
+            if (clockEl) clockEl.textContent = wibTime;
+            
             sessions.forEach((s, i) => {{
                 const endTime = parseDate(s.end);
                 const startTime = parseDate(s.start);
+                
+                // Validasi jika tanggal tidak valid
+                if (!endTime || !startTime || isNaN(endTime.getTime()) || isNaN(startTime.getTime())) {{
+                    const timerEl = document.getElementById('timer-' + i);
+                    if (timerEl) timerEl.textContent = 'ERROR';
+                    return;
+                }}
+                
                 const totalMs = endTime - startTime;
                 const remainMs = endTime - now;
-                const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
-                const state = getState(remainMs, totalMs);
-
+                
+                // Jika waktu sudah habis atau tidak valid
+                let pct = 0;
+                let state = 'danger';
+                
+                if (remainMs > 0 && totalMs > 0) {{
+                    pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
+                    state = getState(remainMs, totalMs);
+                }}
+                
                 const timerEl = document.getElementById('timer-' + i);
                 const barEl = document.getElementById('bar-' + i);
                 const pctEl = document.getElementById('pct-' + i);
                 const dotEl = document.getElementById('dot-' + i);
                 const cardEl = document.getElementById('card-' + i);
-
+                
                 if (timerEl) {{
                     timerEl.textContent = remainMs > 0 ? formatCountdown(remainMs) : 'HABIS';
                     timerEl.className = 'countdown-time' + (state !== 'normal' ? ' ' + state : '');
@@ -437,12 +493,19 @@ if menu == "📊 Dashboard":
                     barEl.style.width = pct.toFixed(1) + '%';
                     barEl.className = 'progress-bar-fill' + (state !== 'normal' ? ' ' + state : '');
                 }}
-                if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
-                if (dotEl) dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
-                if (cardEl) cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
+                if (pctEl) {{
+                    pctEl.textContent = remainMs > 0 ? pct.toFixed(0) + '%' : '0%';
+                }}
+                if (dotEl) {{
+                    dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
+                }}
+                if (cardEl) {{
+                    cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
+                }}
             }});
         }}
 
+        // Inisialisasi
         buildCards();
         tick();
         setInterval(tick, 1000);
