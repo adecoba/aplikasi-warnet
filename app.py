@@ -454,7 +454,7 @@ if menu == "📊 Dashboard":
         from datetime import datetime
         import pytz
 
-        timezone = pytz.timezone('Asia/Makassar')
+        timezone = pytz.timezone('Asia/Jakarta')
 
         sessions_js = []
         for _, row in active_sessions.iterrows():
@@ -475,7 +475,7 @@ if menu == "📊 Dashboard":
                 "end": end_time.isoformat(),
                 "duration": int(row['duration_minutes']),
                 "price": int(row['total_price']),
-                "timezone": "GMT+8"  # tambahkan info timezone
+                "timezone": "GMT+7"  # tambahkan info timezone
             })
 
         st.components.v1.html(countdown_html, height=max(200, (len(sessions_js) // 3 + 1) * 220 + 80), scrolling=False)

@@ -25,7 +25,7 @@ OLTP_PATH = "data/warnet.db"
 DW_PATH   = "data/warehouse.db"
 
 # TAMBAHKAN TIMEZONE
-TIMEZONE = pytz.timezone('Asia/Makassar')
+TIMEZONE = pytz.timezone('Asia/Jakarta')
 
 def get_current_time():
     return datetime.now(TIMEZONE)

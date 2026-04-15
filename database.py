@@ -4,7 +4,7 @@ import pandas as pd
 import pytz
 
 DB_PATH = "data/warnet.db"
-TIMEZONE = pytz.timezone('Asia/Makassar')
+TIMEZONE = pytz.timezone('Asia/Jakarta')
 
 def get_current_time():
     """Mengembalikan waktu sekarang dalam GMT+8"""
@@ -270,8 +270,8 @@ def get_all_completed_sessions():
     conn = get_connection()
     query = '''
         SELECT s.*, c.pc_number,
-               datetime(s.start_time, '+8 hours') as start_time_gmt8,
-               datetime(s.end_time, '+8 hours') as end_time_gmt8
+               datetime(s.start_time, '+7 hours') as start_time_gmt7,
+               datetime(s.end_time, '+7 hours') as end_time_gmt7
         FROM sessions s
         JOIN computers c ON s.pc_id = c.id
         WHERE s.status = 'completed'
