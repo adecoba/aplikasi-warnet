@@ -18,17 +18,9 @@ import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
 import os
-import pytz
 
 OLTP_PATH = "data/warnet.db"
 DW_PATH   = "data/warehouse.db"
-
-# Setup timezone GMT+7 (WIB)
-WIB = pytz.timezone('Asia/Jakarta')
-
-def get_current_time():
-    """Mendapatkan waktu sekarang dalam GMT+7 (WIB)"""
-    return datetime.now(WIB)
 
 # ─────────────────────────────────────────────
 # INISIALISASI DATA WAREHOUSE (Star Schema)
@@ -168,15 +160,9 @@ def transform(raw_df: pd.DataFrame):
 
     df = raw_df.copy()
 
-    # Parse datetime dengan timezone awareness
-    df['start_time'] = pd.to_datetime(df['start_time'], utc=False)
-    df['end_time']   = pd.to_datetime(df['end_time'], utc=False)
-    
-    # Jika data tidak memiliki timezone, assign WIB
-    if df['start_time'].dt.tz is None:
-        df['start_time'] = df['start_time'].dt.tz_localize(WIB)
-    if df['end_time'].dt.tz is None:
-        df['end_time'] = df['end_time'].dt.tz_localize(WIB)
+    # Parse datetime
+    df['start_time'] = pd.to_datetime(df['start_time'])
+    df['end_time']   = pd.to_datetime(df['end_time'])
 
     # ── Dimensi Waktu ──────────────────────────────
     df['full_date'] = df['start_time'].dt.date
@@ -184,7 +170,7 @@ def transform(raw_df: pd.DataFrame):
 
     time_rows = []
     for d in dates:
-        dt = pd.Timestamp(d).tz_localize(WIB)
+        dt = pd.Timestamp(d)
         time_rows.append({
             'full_date'   : str(d),
             'day_of_week' : dt.strftime('%A'),
@@ -314,7 +300,7 @@ def run_etl():
     Mengembalikan dict hasil untuk ditampilkan di UI.
     """
     init_warehouse()
-    timestamp = get_current_time()
+    timestamp = datetime.now()
     result = {
         'timestamp'       : timestamp,
         'rows_extracted'  : 0,

@@ -1,20 +1,8 @@
 import sqlite3
 from datetime import datetime, timedelta
 import pandas as pd
-import pytz
 
 DB_PATH = "data/warnet.db"
-
-# Setup timezone GMT+7 (WIB)
-WIB = pytz.timezone('Asia/Jakarta')
-
-def get_current_time():
-    """Mendapatkan waktu sekarang dalam GMT+7 (WIB)"""
-    return datetime.now(WIB)
-
-def get_current_time_str():
-    """Mendapatkan string waktu sekarang dalam GMT+7"""
-    return get_current_time().strftime('%Y-%m-%d %H:%M:%S')
 
 def init_database():
     """Inisialisasi database dan tabel-tabel yang diperlukan"""
@@ -116,11 +104,11 @@ def start_session(pc_id, customer_name, duration_minutes, total_price):
     conn = get_connection()
     cursor = conn.cursor()
     
-    pc_id = int(pc_id)
+    pc_id = int(pc_id)  # Fix: pastikan integer bukan numpy.int64/bytes
     duration_minutes = int(duration_minutes)
     total_price = int(total_price)
     
-    start_time = get_current_time()
+    start_time = datetime.now()
     end_time = start_time + timedelta(minutes=duration_minutes)
     
     cursor.execute('''
@@ -143,8 +131,8 @@ def end_session(session_id, pc_id):
     cursor = conn.cursor()
     
     session_id = int(session_id)
-    pc_id = int(pc_id)
-    end_time = get_current_time()
+    pc_id = int(pc_id)  # Fix: pastikan integer
+    end_time = datetime.now()
     cursor.execute("UPDATE sessions SET end_time = ?, status = 'completed' WHERE id = ?", (end_time, session_id))
     cursor.execute("UPDATE computers SET status = 'available', current_user = NULL, session_start = NULL WHERE id = ?", (pc_id,))
     
@@ -165,7 +153,7 @@ def get_active_sessions():
 
 def get_today_revenue():
     conn = get_connection()
-    today = get_current_time().strftime('%Y-%m-%d')
+    today = datetime.now().strftime('%Y-%m-%d')
     query = '''
         SELECT COALESCE(SUM(total_price), 0) as revenue, COUNT(*) as sessions
         FROM sessions
@@ -180,7 +168,7 @@ def get_hourly_usage():
     query = '''
         SELECT strftime('%H', start_time) as hour, COUNT(*) as total
         FROM sessions
-        WHERE DATE(start_time) = DATE('now', 'localtime')
+        WHERE DATE(start_time) = DATE('now')
         GROUP BY hour
         ORDER BY hour
     '''
@@ -236,7 +224,7 @@ def add_time_session(pc_id, additional_minutes):
     conn = get_connection()
     cursor = conn.cursor()
     
-    pc_id = int(pc_id)
+    pc_id = int(pc_id)  # Fix: pastikan integer
     # Dapatkan sesi aktif untuk PC ini
     cursor.execute('''
         SELECT id, end_time, total_price, duration_minutes
@@ -247,10 +235,7 @@ def add_time_session(pc_id, additional_minutes):
     session = cursor.fetchone()
     if session:
         session_id, current_end, current_price, current_duration = session
-        # Parse end_time dengan timezone awareness
-        if isinstance(current_end, str):
-            current_end = datetime.fromisoformat(current_end)
-        new_end = current_end + timedelta(minutes=additional_minutes)
+        new_end = datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S.%f') + timedelta(minutes=additional_minutes)
         new_duration = current_duration + additional_minutes
         
         # Hitung harga tambahan (Rp 100 per menit)
