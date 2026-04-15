@@ -4,6 +4,11 @@ import pandas as pd
 
 DB_PATH = "data/warnet.db"
 
+def get_now_gmt7():
+    """Mendapatkan waktu sekarang dalam GMT+7 (Asia/Jakarta)"""
+    # UTC + 7 jam = GMT+7
+    return datetime.utcnow() + timedelta(hours=7)
+
 def init_database():
     """Inisialisasi database dan tabel-tabel yang diperlukan"""
     conn = sqlite3.connect(DB_PATH)
@@ -104,11 +109,11 @@ def start_session(pc_id, customer_name, duration_minutes, total_price):
     conn = get_connection()
     cursor = conn.cursor()
     
-    pc_id = int(pc_id)  # Fix: pastikan integer bukan numpy.int64/bytes
+    pc_id = int(pc_id)
     duration_minutes = int(duration_minutes)
     total_price = int(total_price)
     
-    start_time = datetime.now()
+    start_time = get_now_gmt7()
     end_time = start_time + timedelta(minutes=duration_minutes)
     
     cursor.execute('''
@@ -118,7 +123,6 @@ def start_session(pc_id, customer_name, duration_minutes, total_price):
     
     session_id = cursor.lastrowid
     
-    # Update status komputer
     cursor.execute("UPDATE computers SET status = 'occupied', current_user = ?, session_start = ? WHERE id = ?",
                   (customer_name, start_time, pc_id))
     
@@ -131,8 +135,8 @@ def end_session(session_id, pc_id):
     cursor = conn.cursor()
     
     session_id = int(session_id)
-    pc_id = int(pc_id)  # Fix: pastikan integer
-    end_time = datetime.now()
+    pc_id = int(pc_id)
+    end_time = get_now_gmt7()
     cursor.execute("UPDATE sessions SET end_time = ?, status = 'completed' WHERE id = ?", (end_time, session_id))
     cursor.execute("UPDATE computers SET status = 'available', current_user = NULL, session_start = NULL WHERE id = ?", (pc_id,))
     
@@ -153,7 +157,7 @@ def get_active_sessions():
 
 def get_today_revenue():
     conn = get_connection()
-    today = datetime.now().strftime('%Y-%m-%d')
+    today = get_now_gmt7().strftime('%Y-%m-%d')
     query = '''
         SELECT COALESCE(SUM(total_price), 0) as revenue, COUNT(*) as sessions
         FROM sessions
@@ -165,14 +169,15 @@ def get_today_revenue():
 
 def get_hourly_usage():
     conn = get_connection()
+    today = get_now_gmt7().strftime('%Y-%m-%d')
     query = '''
         SELECT strftime('%H', start_time) as hour, COUNT(*) as total
         FROM sessions
-        WHERE DATE(start_time) = DATE('now')
+        WHERE DATE(start_time) = ?
         GROUP BY hour
         ORDER BY hour
     '''
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(query, conn, params=(today,))
     conn.close()
     return df
 
@@ -224,8 +229,7 @@ def add_time_session(pc_id, additional_minutes):
     conn = get_connection()
     cursor = conn.cursor()
     
-    pc_id = int(pc_id)  # Fix: pastikan integer
-    # Dapatkan sesi aktif untuk PC ini
+    pc_id = int(pc_id)
     cursor.execute('''
         SELECT id, end_time, total_price, duration_minutes
         FROM sessions
@@ -235,10 +239,9 @@ def add_time_session(pc_id, additional_minutes):
     session = cursor.fetchone()
     if session:
         session_id, current_end, current_price, current_duration = session
-        new_end = datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S.%f') + timedelta(minutes=additional_minutes)
+        new_end = datetime.strptime(current_end, '%Y-%m-%d %H:%M:%S') + timedelta(minutes=additional_minutes)
         new_duration = current_duration + additional_minutes
         
-        # Hitung harga tambahan (Rp 100 per menit)
         additional_price = additional_minutes * 100
         new_price = current_price + additional_price
         

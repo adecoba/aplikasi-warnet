@@ -350,22 +350,20 @@ if menu == "📊 Dashboard":
         </div>
 
         <script>
-
 const sessions = {sessions_json};
 
 function parseDate(str) {{
-    // Parse manual: "2026-04-15 22:01:03.349012"
+    // Parse string sebagai GMT+7 (data dari server sudah GMT+7)
+    // Format: "2026-04-15 22:01:03.349012"
     const [datePart, timePart] = str.split(' ');
     const [year, month, day] = datePart.split('-');
     const [hour, minute, secondPart] = timePart.split(':');
     const second = parseFloat(secondPart);
     const ms = Math.round((second - Math.floor(second)) * 1000);
     
-    // Buat tanggal langsung dengan nilai yang sama (tanpa konversi timezone)
-    // Menggunakan Date.UTC tapi dikurangi 7 jam karena data dari GMT+7
-    // Atau lebih mudah: gunakan setHours manual
-    const date = new Date(year, month-1, day, hour, minute, Math.floor(second), ms);
-    return date;
+    // Buat Date object (local time browser)
+    // Data sudah GMT+7, langsung gunakan
+    return new Date(year, month-1, day, hour, minute, Math.floor(second), ms);
 }}
 
 function formatCountdown(ms) {{

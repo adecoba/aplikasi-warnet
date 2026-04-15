@@ -1,17 +1,6 @@
 """
 ETL (Extract, Transform, Load) Module
 ======================================
-Modul ini bertanggung jawab untuk memindahkan data dari database operasional (OLTP)
-ke Data Warehouse (OLAP) dengan arsitektur Star Schema.
-
-Alur ETL:
-  EXTRACT  → Ambil data mentah dari warnet.db (OLTP)
-  TRANSFORM → Bersihkan, enriched, dan bentuk sesuai skema DW
-  LOAD     → Masukkan ke warehouse.db (Data Warehouse)
-
-Star Schema:
-  Fact Table    : fact_sessions
-  Dimension     : dim_time, dim_pc, dim_package
 """
 
 import sqlite3
@@ -22,9 +11,9 @@ import os
 OLTP_PATH = "data/warnet.db"
 DW_PATH   = "data/warehouse.db"
 
-# ─────────────────────────────────────────────
-# INISIALISASI DATA WAREHOUSE (Star Schema)
-# ─────────────────────────────────────────────
+def get_now_gmt7():
+    """Mendapatkan waktu sekarang dalam GMT+7 (Asia/Jakarta)"""
+    return datetime.utcnow() + timedelta(hours=7)
 
 def init_warehouse():
     """Buat skema Data Warehouse jika belum ada."""
@@ -32,7 +21,6 @@ def init_warehouse():
     conn = sqlite3.connect(DW_PATH)
     cur  = conn.cursor()
 
-    # Dimensi Waktu
     cur.execute('''
         CREATE TABLE IF NOT EXISTS dim_time (
             time_id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +36,6 @@ def init_warehouse():
         )
     ''')
 
-    # Dimensi PC
     cur.execute('''
         CREATE TABLE IF NOT EXISTS dim_pc (
             pc_id      INTEGER PRIMARY KEY,
@@ -57,7 +44,6 @@ def init_warehouse():
         )
     ''')
 
-    # Dimensi Paket
     cur.execute('''
         CREATE TABLE IF NOT EXISTS dim_package (
             package_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +53,6 @@ def init_warehouse():
         )
     ''')
 
-    # Tabel Fakta Sesi
     cur.execute('''
         CREATE TABLE IF NOT EXISTS fact_sessions (
             fact_id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +71,6 @@ def init_warehouse():
         )
     ''')
 
-    # Tabel log ETL untuk audit trail
     cur.execute('''
         CREATE TABLE IF NOT EXISTS etl_log (
             log_id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,20 +86,10 @@ def init_warehouse():
     conn.commit()
     conn.close()
 
-
-# ─────────────────────────────────────────────
-# TAHAP 1: EXTRACT
-# ─────────────────────────────────────────────
-
 def extract():
-    """
-    Extract: Ambil semua sesi yang sudah selesai dari database OLTP
-    yang belum ada di Data Warehouse.
-    """
     oltp = sqlite3.connect(OLTP_PATH)
     dw   = sqlite3.connect(DW_PATH)
 
-    # Ambil session_id yang sudah ada di DW agar tidak duplikat
     existing = pd.read_sql_query("SELECT session_id FROM fact_sessions", dw)
     existing_ids = set(existing['session_id'].tolist()) if not existing.empty else set()
 
@@ -139,32 +113,20 @@ def extract():
     oltp.close()
     dw.close()
 
-    # Filter hanya data baru
     if not raw.empty and existing_ids:
         raw = raw[~raw['session_id'].isin(existing_ids)]
 
     return raw
 
-
-# ─────────────────────────────────────────────
-# TAHAP 2: TRANSFORM
-# ─────────────────────────────────────────────
-
 def transform(raw_df: pd.DataFrame):
-    """
-    Transform: Bersihkan dan enriched data untuk masuk ke star schema.
-    Menghasilkan dict berisi dataframe untuk tiap tabel DW.
-    """
     if raw_df.empty:
         return None
 
     df = raw_df.copy()
 
-    # Parse datetime
     df['start_time'] = pd.to_datetime(df['start_time'])
     df['end_time']   = pd.to_datetime(df['end_time'])
 
-    # ── Dimensi Waktu ──────────────────────────────
     df['full_date'] = df['start_time'].dt.date
     dates = df['full_date'].unique()
 
@@ -174,7 +136,7 @@ def transform(raw_df: pd.DataFrame):
         time_rows.append({
             'full_date'   : str(d),
             'day_of_week' : dt.strftime('%A'),
-            'day_number'  : dt.weekday(),        # 0=Senin, 6=Minggu
+            'day_number'  : dt.weekday(),
             'week_number' : dt.isocalendar()[1],
             'month_number': dt.month,
             'month_name'  : dt.strftime('%B'),
@@ -184,11 +146,8 @@ def transform(raw_df: pd.DataFrame):
         })
     dim_time_df = pd.DataFrame(time_rows)
 
-    # ── Dimensi PC ─────────────────────────────────
     dim_pc_df = df[['pc_id','pc_number','specs']].drop_duplicates('pc_id')
-    dim_pc_df = dim_pc_df.rename(columns={'pc_id': 'pc_id'})
 
-    # ── Dimensi Paket (berdasarkan durasi) ─────────
     df['duration_label'] = df['duration_minutes'].apply(
         lambda x: f"{x//60} Jam" if x % 60 == 0 else f"{x//60}j {x%60}m"
     )
@@ -198,32 +157,17 @@ def transform(raw_df: pd.DataFrame):
     )
     dim_package_df = df[['duration_minutes','duration_label','price_per_minute']].drop_duplicates('duration_minutes')
 
-    # ── Tabel Fakta ────────────────────────────────
     df['start_hour']      = df['start_time'].dt.hour
     df['revenue_per_min'] = df['price_per_minute']
-
-    fact_df = df[['session_id','pc_id','customer_name',
-                  'start_hour','duration_minutes',
-                  'total_price','revenue_per_min','full_date','duration_minutes']].copy()
 
     return {
         'dim_time'   : dim_time_df,
         'dim_pc'     : dim_pc_df,
         'dim_package': dim_package_df,
-        'fact'       : fact_df,
-        'raw'        : df   # bawa raw untuk resolusi FK saat load
+        'raw'        : df
     }
 
-
-# ─────────────────────────────────────────────
-# TAHAP 3: LOAD
-# ─────────────────────────────────────────────
-
 def load(transformed: dict):
-    """
-    Load: Masukkan data hasil transformasi ke tabel-tabel Data Warehouse.
-    Mengembalikan jumlah baris yang berhasil di-load.
-    """
     if transformed is None:
         return 0
 
@@ -232,7 +176,6 @@ def load(transformed: dict):
     raw = transformed['raw']
     loaded = 0
 
-    # ── Load dim_time ──────────────────────────────
     for _, row in transformed['dim_time'].iterrows():
         cur.execute('''
             INSERT OR IGNORE INTO dim_time
@@ -243,14 +186,12 @@ def load(transformed: dict):
               row['week_number'], row['month_number'], row['month_name'],
               row['quarter'], row['year'], row['is_weekend']))
 
-    # ── Load dim_pc ────────────────────────────────
     for _, row in transformed['dim_pc'].iterrows():
         cur.execute('''
             INSERT OR IGNORE INTO dim_pc (pc_id, pc_number, specs)
             VALUES (?,?,?)
         ''', (int(row['pc_id']), int(row['pc_number']), row['specs']))
 
-    # ── Load dim_package ───────────────────────────
     for _, row in transformed['dim_package'].iterrows():
         cur.execute('''
             INSERT OR IGNORE INTO dim_package
@@ -261,11 +202,9 @@ def load(transformed: dict):
 
     dw.commit()
 
-    # Bangun lookup FK
     time_map    = {r[0]: r[1] for r in cur.execute("SELECT full_date, time_id FROM dim_time")}
     package_map = {r[0]: r[1] for r in cur.execute("SELECT duration_minutes, package_id FROM dim_package")}
 
-    # ── Load fact_sessions ─────────────────────────
     for _, row in raw.iterrows():
         date_str   = str(row['full_date'])
         time_id    = time_map.get(date_str)
@@ -289,18 +228,9 @@ def load(transformed: dict):
     dw.close()
     return loaded
 
-
-# ─────────────────────────────────────────────
-# PIPELINE UTAMA ETL
-# ─────────────────────────────────────────────
-
 def run_etl():
-    """
-    Jalankan pipeline ETL lengkap: Extract → Transform → Load.
-    Mengembalikan dict hasil untuk ditampilkan di UI.
-    """
     init_warehouse()
-    timestamp = datetime.now()
+    timestamp = get_now_gmt7()
     result = {
         'timestamp'       : timestamp,
         'rows_extracted'  : 0,
@@ -311,15 +241,12 @@ def run_etl():
     }
 
     try:
-        # EXTRACT
         raw = extract()
         result['rows_extracted'] = len(raw)
 
-        # TRANSFORM
         transformed = transform(raw)
         result['rows_transformed'] = len(raw) if transformed else 0
 
-        # LOAD
         loaded = load(transformed)
         result['rows_loaded'] = loaded
         result['message'] = f"ETL selesai: {loaded} sesi baru dimuat ke Data Warehouse."
@@ -328,7 +255,6 @@ def run_etl():
         result['status']  = 'error'
         result['message'] = str(e)
 
-    # Catat ke etl_log
     try:
         dw  = sqlite3.connect(DW_PATH)
         cur = dw.cursor()
@@ -346,17 +272,11 @@ def run_etl():
 
     return result
 
-
-# ─────────────────────────────────────────────
-# QUERY ANALITIK (dari Data Warehouse)
-# ─────────────────────────────────────────────
-
 def get_dw_connection():
     init_warehouse()
     return sqlite3.connect(DW_PATH)
 
 def query_revenue_trend(period='weekly'):
-    """Tren pendapatan mingguan atau bulanan."""
     conn = get_dw_connection()
     if period == 'weekly':
         query = '''
@@ -372,7 +292,7 @@ def query_revenue_trend(period='weekly'):
             GROUP BY t.year, t.week_number
             ORDER BY t.year, t.week_number
         '''
-    else:  # monthly
+    else:
         query = '''
             SELECT
                 t.year,
@@ -391,10 +311,8 @@ def query_revenue_trend(period='weekly'):
     return df
 
 def query_busiest_hours():
-    """Analisis jam dan hari tersibuk."""
     conn = get_dw_connection()
 
-    # Per jam
     hour_q = '''
         SELECT
             start_hour,
@@ -406,7 +324,6 @@ def query_busiest_hours():
         ORDER BY start_hour
     '''
 
-    # Per hari
     day_q = '''
         SELECT
             t.day_of_week,
@@ -426,7 +343,6 @@ def query_busiest_hours():
     return hour_df, day_df
 
 def query_pc_performance():
-    """Laporan performa per PC."""
     conn = get_dw_connection()
     query = '''
         SELECT
@@ -446,10 +362,6 @@ def query_pc_performance():
     return df
 
 def query_forecasting():
-    """
-    Prediksi pendapatan 4 periode ke depan menggunakan
-    metode Simple Linear Regression atas data historis.
-    """
     conn = get_dw_connection()
     query = '''
         SELECT
@@ -467,7 +379,6 @@ def query_forecasting():
     return df
 
 def query_etl_log():
-    """Ambil riwayat eksekusi ETL."""
     conn = get_dw_connection()
     df = pd.read_sql_query(
         "SELECT * FROM etl_log ORDER BY run_timestamp DESC LIMIT 20", conn
@@ -476,7 +387,6 @@ def query_etl_log():
     return df
 
 def get_dw_summary():
-    """Ringkasan isi Data Warehouse untuk ditampilkan di UI."""
     conn = get_dw_connection()
     facts    = pd.read_sql_query("SELECT COUNT(*) AS n FROM fact_sessions", conn).iloc[0]['n']
     dim_time = pd.read_sql_query("SELECT COUNT(*) AS n FROM dim_time", conn).iloc[0]['n']
