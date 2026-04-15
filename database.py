@@ -1,18 +1,8 @@
 import sqlite3
 from datetime import datetime, timedelta
 import pandas as pd
-import pytz
 
 DB_PATH = "data/warnet.db"
-TIMEZONE = pytz.timezone('Asia/Jakarta')
-
-def get_current_time():
-    """Mengembalikan waktu sekarang dalam GMT+7"""
-    return datetime.now(TIMEZONE)
-
-def get_current_date():
-    """Mengembalikan tanggal sekarang dalam GMT+7"""
-    return get_current_time().date()
 
 def init_database():
     """Inisialisasi database dan tabel-tabel yang diperlukan"""
@@ -114,12 +104,11 @@ def start_session(pc_id, customer_name, duration_minutes, total_price):
     conn = get_connection()
     cursor = conn.cursor()
     
-    pc_id = int(pc_id)
+    pc_id = int(pc_id)  # Fix: pastikan integer bukan numpy.int64/bytes
     duration_minutes = int(duration_minutes)
     total_price = int(total_price)
     
-    # UBAH: dari datetime.now() menjadi get_current_time()
-    start_time = get_current_time()
+    start_time = datetime.now()
     end_time = start_time + timedelta(minutes=duration_minutes)
     
     cursor.execute('''
@@ -129,6 +118,7 @@ def start_session(pc_id, customer_name, duration_minutes, total_price):
     
     session_id = cursor.lastrowid
     
+    # Update status komputer
     cursor.execute("UPDATE computers SET status = 'occupied', current_user = ?, session_start = ? WHERE id = ?",
                   (customer_name, start_time, pc_id))
     
@@ -141,9 +131,8 @@ def end_session(session_id, pc_id):
     cursor = conn.cursor()
     
     session_id = int(session_id)
-    pc_id = int(pc_id)
-    # UBAH: dari datetime.now() menjadi get_current_time()
-    end_time = get_current_time()
+    pc_id = int(pc_id)  # Fix: pastikan integer
+    end_time = datetime.now()
     cursor.execute("UPDATE sessions SET end_time = ?, status = 'completed' WHERE id = ?", (end_time, session_id))
     cursor.execute("UPDATE computers SET status = 'available', current_user = NULL, session_start = NULL WHERE id = ?", (pc_id,))
     
@@ -164,8 +153,7 @@ def get_active_sessions():
 
 def get_today_revenue():
     conn = get_connection()
-    # UBAH: menggunakan get_current_date() untuk GMT+7
-    today = get_current_date().strftime('%Y-%m-%d')
+    today = datetime.now().strftime('%Y-%m-%d')
     query = '''
         SELECT COALESCE(SUM(total_price), 0) as revenue, COUNT(*) as sessions
         FROM sessions
@@ -177,12 +165,10 @@ def get_today_revenue():
 
 def get_hourly_usage():
     conn = get_connection()
-    # UBAH: menggunakan datetime dengan offset GMT+7 di SQLite
-    # SQLite tidak native timezone, jadi kita konversi saat query
     query = '''
-        SELECT strftime('%H', datetime(start_time, '+7 hours')) as hour, COUNT(*) as total
+        SELECT strftime('%H', start_time) as hour, COUNT(*) as total
         FROM sessions
-        WHERE date(datetime(start_time, '+7 hours')) = date('now', '+7 hours')
+        WHERE DATE(start_time) = DATE('now')
         GROUP BY hour
         ORDER BY hour
     '''
@@ -269,9 +255,7 @@ def get_all_completed_sessions():
     """Ambil semua sesi yang sudah selesai untuk laporan"""
     conn = get_connection()
     query = '''
-        SELECT s.*, c.pc_number,
-               datetime(s.start_time, '+7 hours') as start_time_gmt7,
-               datetime(s.end_time, '+7 hours') as end_time_gmt7
+        SELECT s.*, c.pc_number
         FROM sessions s
         JOIN computers c ON s.pc_id = c.id
         WHERE s.status = 'completed'
