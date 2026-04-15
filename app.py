@@ -119,8 +119,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "Menu Utama",
-    ["📊 Dashboard", "🖥️ Peta PC", "💰 Kasir","⚙️ Manajemen Harga",
-     "📈 Analisis Data", "🗄️ Data Warehouse & ETL"]
+    ["📊 Dashboard", "🖥️ Peta PC", "💰 Kasir","⚙️ Manajemen Harga"]
 )
 
 st.sidebar.markdown("---")
@@ -355,7 +354,22 @@ if menu == "📊 Dashboard":
 
         function parseDate(str) {{
             // Handle format: "2026-04-15 22:01:03.349012"
-            return new Date(str.replace(' ', 'T'));
+            // Parse as GMT+7 (Asia/Jakarta)
+            const date = new Date(str.replace(' ', 'T'));
+            // Get timezone offset for GMT+7 (420 minutes)
+            const gmt7Offset = 7 * 60;
+            const localOffset = date.getTimezoneOffset();
+            const adjustedDate = new Date(date.getTime() + (localOffset + gmt7Offset) * 60000);
+            return adjustedDate;
+        }}
+
+        function getCurrentTimeGMT7() {{
+            const now = new Date();
+            // Convert current time to GMT+7
+            const gmt7Offset = 7 * 60;
+            const localOffset = now.getTimezoneOffset();
+            const gmt7Time = new Date(now.getTime() + (localOffset + gmt7Offset) * 60000);
+            return gmt7Time;
         }}
 
         function formatCountdown(ms) {{
@@ -369,7 +383,7 @@ if menu == "📊 Dashboard":
 
         function formatTime(dateStr) {{
             const d = parseDate(dateStr);
-            return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
+            return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit', timeZone: 'Asia/Jakarta'}});
         }}
 
         function getState(ms, totalMs) {{
@@ -412,9 +426,9 @@ if menu == "📊 Dashboard":
         }}
 
         function tick() {{
-            const now = new Date();
-            // Live clock
-            document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
+            const now = getCurrentTimeGMT7();
+            // Live clock in GMT+7
+            document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID', {{timeZone: 'Asia/Jakarta'}});
 
             sessions.forEach((s, i) => {{
                 const endTime = parseDate(s.end);
@@ -692,304 +706,6 @@ elif menu == "⚙️ Manajemen Harga":
     st.info("💡 **Informasi:** Harga default adalah Rp 100 per menit (Rp 6.000 per jam). Anda bisa membuat paket dengan harga khusus di atas.")
 
 
-# ==================== ANALISIS DATA ====================
-elif menu == "📈 Analisis Data":
-    st.title("📈 Analisis Data Penggunaan Warnet")
-    st.markdown("---")
-
-    etl.init_warehouse()
-
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📅 Tren Pendapatan",
-        "⏰ Jam & Hari Tersibuk",
-        "💻 Performa per PC",
-        "🔮 Prediksi Pendapatan"
-    ])
-
-    # ── Tab 1: Tren Pendapatan ───────────────────────────────
-    with tab1:
-        st.subheader("📅 Tren Pendapatan")
-        period = st.radio("Tampilkan per", ["Mingguan", "Bulanan"], horizontal=True)
-        period_key = "weekly" if period == "Mingguan" else "monthly"
-
-        trend_df = etl.query_revenue_trend(period_key)
-
-        if trend_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu di menu 🗄️ Data Warehouse & ETL.")
-        else:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Pendapatan", f"Rp {trend_df['total_revenue'].sum():,.0f}")
-            with col2:
-                st.metric("Total Sesi", f"{trend_df['total_sessions'].sum():,.0f}")
-            with col3:
-                st.metric("Rata-rata Durasi", f"{trend_df['avg_duration'].mean():.0f} menit")
-
-            # Grafik tren pendapatan
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=trend_df['label'], y=trend_df['total_revenue'],
-                name='Pendapatan', marker_color='#0099ff',
-                opacity=0.8
-            ))
-            fig.add_trace(go.Scatter(
-                x=trend_df['label'], y=trend_df['total_revenue'],
-                mode='lines+markers', name='Tren',
-                line=dict(color='#00d4aa', width=2),
-                marker=dict(size=6)
-            ))
-            fig.update_layout(
-                title=f"Tren Pendapatan {period}",
-                xaxis_title="Periode", yaxis_title="Pendapatan (Rp)",
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Grafik jumlah sesi
-            fig2 = px.bar(
-                trend_df, x='label', y='total_sessions',
-                title=f"Jumlah Sesi {period}",
-                labels={'label': 'Periode', 'total_sessions': 'Jumlah Sesi'},
-                color_discrete_sequence=['#FF6B6B']
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-            st.subheader("📋 Tabel Data Tren")
-            display_df = trend_df[['label','total_revenue','total_sessions','avg_duration']].copy()
-            display_df.columns = ['Periode','Total Pendapatan (Rp)','Jumlah Sesi','Rata-rata Durasi (mnt)']
-            display_df['Total Pendapatan (Rp)'] = display_df['Total Pendapatan (Rp)'].apply(lambda x: f"Rp {x:,.0f}")
-            display_df['Rata-rata Durasi (mnt)'] = display_df['Rata-rata Durasi (mnt)'].apply(lambda x: f"{x:.1f}")
-            st.dataframe(display_df, use_container_width=True)
-
-    # ── Tab 2: Jam & Hari Tersibuk ───────────────────────────
-    with tab2:
-        st.subheader("⏰ Analisis Jam & Hari Tersibuk")
-
-        hour_df, day_df = etl.query_busiest_hours()
-
-        if hour_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu.")
-        else:
-            col1, col2 = st.columns(2)
-
-            with col1:
-                # Heatmap jam
-                fig_hour = px.bar(
-                    hour_df, x='start_hour', y='total_sessions',
-                    title="Distribusi Sesi per Jam",
-                    labels={'start_hour': 'Jam', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Blues'
-                )
-                fig_hour.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_hour, use_container_width=True)
-
-                if not hour_df.empty:
-                    peak = hour_df.loc[hour_df['total_sessions'].idxmax()]
-                    st.success(f"🕐 **Jam Tersibuk:** {int(peak['start_hour']):02d}.00 — {int(peak['total_sessions'])} sesi")
-
-            with col2:
-                # Per hari
-                day_order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-                day_label = {'Monday':'Senin','Tuesday':'Selasa','Wednesday':'Rabu',
-                             'Thursday':'Kamis','Friday':'Jumat','Saturday':'Sabtu','Sunday':'Minggu'}
-                day_df['day_label'] = day_df['day_of_week'].map(day_label)
-                day_df_sorted = day_df.set_index('day_of_week').reindex(day_order).reset_index()
-                day_df_sorted['day_label'] = day_df_sorted['day_of_week'].map(day_label)
-
-                fig_day = px.bar(
-                    day_df_sorted.dropna(subset=['total_sessions']),
-                    x='day_label', y='total_sessions',
-                    title="Distribusi Sesi per Hari",
-                    labels={'day_label': 'Hari', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Oranges'
-                )
-                fig_day.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_day, use_container_width=True)
-
-                if not day_df.empty and 'total_sessions' in day_df.columns:
-                    valid = day_df.dropna(subset=['total_sessions'])
-                    if not valid.empty:
-                        busiest_day = valid.loc[valid['total_sessions'].idxmax()]
-                        day_name = day_label.get(busiest_day['day_of_week'], busiest_day['day_of_week'])
-                        st.success(f"📅 **Hari Tersibuk:** {day_name} — {int(busiest_day['total_sessions'])} sesi")
-
-            # Revenue per jam
-            st.subheader("💰 Pendapatan per Jam")
-            fig_rev_hour = px.area(
-                hour_df, x='start_hour', y='total_revenue',
-                title="Total Pendapatan per Jam",
-                labels={'start_hour': 'Jam', 'total_revenue': 'Pendapatan (Rp)'},
-                color_discrete_sequence=['#00d4aa']
-            )
-            st.plotly_chart(fig_rev_hour, use_container_width=True)
-
-    # ── Tab 3: Performa per PC ───────────────────────────────
-    with tab3:
-        st.subheader("💻 Performa per PC")
-
-        pc_df = etl.query_pc_performance()
-
-        if pc_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu.")
-        else:
-            col1, col2 = st.columns(2)
-
-            with col1:
-                fig_pc_rev = px.bar(
-                    pc_df, x='pc_number', y='total_revenue',
-                    title="Total Pendapatan per PC",
-                    labels={'pc_number': 'Nomor PC', 'total_revenue': 'Pendapatan (Rp)'},
-                    color='total_revenue',
-                    color_continuous_scale='Viridis',
-                    text='total_revenue'
-                )
-                fig_pc_rev.update_traces(texttemplate='Rp%{text:,.0f}', textposition='outside')
-                fig_pc_rev.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_pc_rev, use_container_width=True)
-
-            with col2:
-                fig_pc_ses = px.bar(
-                    pc_df, x='pc_number', y='total_sessions',
-                    title="Jumlah Sesi per PC",
-                    labels={'pc_number': 'Nomor PC', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Plasma'
-                )
-                fig_pc_ses.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_pc_ses, use_container_width=True)
-
-            # Pie chart kontribusi pendapatan
-            fig_pie = px.pie(
-                pc_df, values='total_revenue', names=pc_df['pc_number'].apply(lambda x: f"PC {x}"),
-                title="Kontribusi Pendapatan per PC",
-                color_discrete_sequence=px.colors.sequential.RdBu
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-            # Tabel detail
-            st.subheader("📋 Tabel Detail Performa PC")
-            display_pc = pc_df.copy()
-            display_pc['pc_number']          = display_pc['pc_number'].apply(lambda x: f"PC {x}")
-            display_pc['total_revenue']       = display_pc['total_revenue'].apply(lambda x: f"Rp {x:,.0f}")
-            display_pc['avg_duration']        = display_pc['avg_duration'].apply(lambda x: f"{x:.0f} mnt")
-            display_pc['total_usage_minutes'] = display_pc['total_usage_minutes'].apply(lambda x: f"{x/60:.1f} jam")
-            display_pc.columns = ['No PC','Spesifikasi','Total Sesi','Total Pendapatan',
-                                   'Rata-rata Durasi','Total Pemakaian']
-            st.dataframe(display_pc, use_container_width=True)
-
-            # PC terpopuler
-            top_pc = pc_df.iloc[0]
-            st.success(f"🏆 **PC Paling Produktif:** PC {int(top_pc['pc_number'])} "
-                       f"— {int(top_pc['total_sessions'])} sesi, Rp {int(top_pc['total_revenue']):,}")
-
-    # ── Tab 4: Prediksi Pendapatan ───────────────────────────
-    with tab4:
-        st.subheader("🔮 Prediksi Pendapatan (Forecasting)")
-        st.caption("Menggunakan Simple Linear Regression berdasarkan data historis mingguan.")
-
-        forecast_df = etl.query_forecasting()
-
-        if len(forecast_df) < 2:
-            st.info("Data historis belum cukup untuk prediksi. Dibutuhkan minimal 2 periode data. Jalankan ETL terlebih dahulu.")
-        else:
-            # Buat indeks numerik untuk regresi
-            n = len(forecast_df)
-            x = np.arange(n)
-            y = forecast_df['total_revenue'].values.astype(float)
-
-            # Simple Linear Regression: y = a + b*x
-            b = (n * np.dot(x, y) - x.sum() * y.sum()) / (n * np.dot(x, x) - x.sum()**2)
-            a = (y.sum() - b * x.sum()) / n
-
-            # Prediksi 4 minggu ke depan
-            future_x    = np.arange(n, n + 4)
-            future_preds = a + b * future_x
-
-            # Label periode masa depan
-            last_year  = int(forecast_df.iloc[-1]['year'])
-            last_week  = int(forecast_df.iloc[-1]['week_number'])
-            future_labels = []
-            for i in range(1, 5):
-                w = last_week + i
-                y_label = last_year
-                if w > 52:
-                    w -= 52
-                    y_label += 1
-                future_labels.append(f"{y_label}-W{w:02d}")
-
-            # Gabungkan untuk visualisasi
-            hist_labels  = forecast_df['year'].astype(str) + '-W' + forecast_df['week_number'].apply(lambda w: f"{w:02d}")
-            fitted_vals  = a + b * x
-
-            fig_fore = go.Figure()
-            # Data aktual
-            fig_fore.add_trace(go.Scatter(
-                x=hist_labels, y=y,
-                mode='lines+markers', name='Aktual',
-                line=dict(color='#0099ff', width=2),
-                marker=dict(size=7)
-            ))
-            # Garis regresi (fitted)
-            fig_fore.add_trace(go.Scatter(
-                x=hist_labels, y=fitted_vals,
-                mode='lines', name='Garis Regresi',
-                line=dict(color='#00d4aa', width=1, dash='dot')
-            ))
-            # Prediksi masa depan
-            fig_fore.add_trace(go.Scatter(
-                x=future_labels, y=future_preds,
-                mode='lines+markers', name='Prediksi',
-                line=dict(color='#FF6B6B', width=2, dash='dash'),
-                marker=dict(size=9, symbol='diamond')
-            ))
-            fig_fore.update_layout(
-                title="Prediksi Pendapatan 4 Minggu ke Depan",
-                xaxis_title="Periode Minggu",
-                yaxis_title="Pendapatan (Rp)",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02)
-            )
-            st.plotly_chart(fig_fore, use_container_width=True)
-
-            # Tabel prediksi
-            st.subheader("📋 Tabel Prediksi")
-            pred_table = pd.DataFrame({
-                'Periode'           : future_labels,
-                'Prediksi Pendapatan': [f"Rp {max(0,p):,.0f}" for p in future_preds],
-            })
-            st.dataframe(pred_table, use_container_width=True)
-
-            # Info model
-            r2 = 1 - np.sum((y - fitted_vals)**2) / np.sum((y - y.mean())**2) if y.std() > 0 else 0
-            trend_dir = "📈 Naik" if b > 0 else "📉 Turun"
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Arah Tren", trend_dir)
-            with col2:
-                st.metric("R² Model", f"{r2:.3f}")
-            with col3:
-                st.metric("Data Historis", f"{n} minggu")
-            st.caption("R² mendekati 1.0 berarti model sangat sesuai dengan data historis.")
-
-
-# ==================== DATA WAREHOUSE & ETL ====================
-elif menu == "🗄️ Data Warehouse & ETL":
     st.title("🗄️ Data Warehouse & Proses ETL")
     st.markdown("---")
 
