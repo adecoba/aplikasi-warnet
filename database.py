@@ -47,7 +47,10 @@ def init_database():
             name TEXT UNIQUE,
             duration_minutes INTEGER,
             price INTEGER,
-            is_active INTEGER DEFAULT 1
+            is_active INTEGER DEFAULT 1,
+            package_type TEXT DEFAULT 'regular',
+            start_hour INTEGER,
+            end_hour INTEGER
         )
     ''')
     
@@ -73,12 +76,20 @@ def init_database():
     cursor.execute("SELECT COUNT(*) FROM packages")
     if cursor.fetchone()[0] == 0:
         default_packages = [
-            ('1 Jam', 60, 5000, 1),
-            ('2 Jam', 120, 9000, 1),
-            ('3 Jam', 180, 12000, 1),
-            ('5 Jam', 300, 18000, 1),
+            # (name, duration_minutes, price, is_active, package_type, start_hour, end_hour)
+            ('1 Jam',              60,    5000,  1, 'regular', None, None),
+            ('2 Jam',             120,    8000,  1, 'regular', None, None),
+            ('4 Jam',             240,   15000,  1, 'regular', None, None),
+            ('5 Jam',             300,   18000,  1, 'regular', None, None),
+            ('Member Mingguan',  1440,  25000,  1, 'member',  None, None),
+            ('Member Bulanan',   2880,  60000,  1, 'member',  None, None),
+            ('Paket Pagi',        360,   10000,  1, 'shift',   7,    13),
+            ('Paket Malam',       420,   15000,  1, 'shift',   22,   5),
         ]
-        cursor.executemany("INSERT INTO packages (name, duration_minutes, price, is_active) VALUES (?, ?, ?, ?)", default_packages)
+        cursor.executemany(
+            "INSERT INTO packages (name, duration_minutes, price, is_active, package_type, start_hour, end_hour) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            default_packages
+        )
     
     conn.commit()
     conn.close()
@@ -182,23 +193,27 @@ def get_hourly_usage():
 
 def get_packages():
     conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM packages WHERE is_active = 1", conn)
+    df = pd.read_sql_query("SELECT * FROM packages WHERE is_active = 1 ORDER BY package_type, duration_minutes", conn)
     conn.close()
     return df
 
-def add_package(name, duration_minutes, price):
+def add_package(name, duration_minutes, price, package_type='regular', start_hour=None, end_hour=None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO packages (name, duration_minutes, price, is_active) VALUES (?, ?, ?, 1)", 
-                  (name, duration_minutes, price))
+    cursor.execute(
+        "INSERT INTO packages (name, duration_minutes, price, is_active, package_type, start_hour, end_hour) VALUES (?, ?, ?, 1, ?, ?, ?)",
+        (name, duration_minutes, price, package_type, start_hour, end_hour)
+    )
     conn.commit()
     conn.close()
 
-def update_package(package_id, name, duration_minutes, price):
+def update_package(package_id, name, duration_minutes, price, package_type='regular', start_hour=None, end_hour=None):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE packages SET name = ?, duration_minutes = ?, price = ? WHERE id = ?",
-                  (name, duration_minutes, price, package_id))
+    cursor.execute(
+        "UPDATE packages SET name = ?, duration_minutes = ?, price = ?, package_type = ?, start_hour = ?, end_hour = ? WHERE id = ?",
+        (name, duration_minutes, price, package_type, start_hour, end_hour, package_id)
+    )
     conn.commit()
     conn.close()
 

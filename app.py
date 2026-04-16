@@ -581,35 +581,85 @@ elif menu == "💰 Kasir":
     
     st.markdown("---")
     
-    # Pilihan paket
+    # Pilihan paket per kategori
     st.subheader("📦 Pilih Paket")
-    
-    # Tampilkan paket dalam bentuk tombol
+
+    if 'selected_package' not in st.session_state:
+        st.session_state.selected_package = None
+
     if not packages.empty:
-        package_cols = st.columns(len(packages))
+        now_hour = db.get_now_gmt7().hour
 
-        # Fix: simpan pilihan paket di session_state agar tidak hilang saat rerun
-        if 'selected_package' not in st.session_state:
-            st.session_state.selected_package = None
+        # Helper: cek apakah shift tersedia sekarang
+        def shift_available(pkg_row):
+            if pkg_row['package_type'] != 'shift':
+                return True
+            sh, eh = int(pkg_row['start_hour']), int(pkg_row['end_hour'])
+            # Shift malam: 22–05 (melewati tengah malam)
+            if sh > eh:
+                return now_hour >= sh or now_hour < eh
+            return sh <= now_hour < eh
 
-        for idx, row in packages.iterrows():
-            with package_cols[idx]:
-                hours = row['duration_minutes'] // 60
-                mins = row['duration_minutes'] % 60
-                duration_text = f"{hours} Jam" if mins == 0 else f"{hours} Jam {mins} Menit"
+        # Kelompokkan paket
+        regular_pkgs = packages[packages['package_type'] == 'regular']
+        member_pkgs  = packages[packages['package_type'] == 'member']
+        shift_pkgs   = packages[packages['package_type'] == 'shift']
 
-                is_selected = (
-                    st.session_state.selected_package is not None and
-                    st.session_state.selected_package['id'] == row['id']
-                )
-                label = f"✅ {row['name']}\n{duration_text}\nRp {row['price']:,.0f}" if is_selected else f"📦 {row['name']}\n{duration_text}\nRp {row['price']:,.0f}"
+        # ---- Paket Regular ----
+        if not regular_pkgs.empty:
+            st.markdown("**⏱️ Paket Regular**")
+            pkg_cols = st.columns(len(regular_pkgs))
+            for i, (_, row) in enumerate(regular_pkgs.iterrows()):
+                with pkg_cols[i]:
+                    hours = row['duration_minutes'] // 60
+                    mins = row['duration_minutes'] % 60
+                    dur_text = f"{hours} Jam" if mins == 0 else f"{hours}j {mins}m"
+                    is_sel = (st.session_state.selected_package is not None and
+                              st.session_state.selected_package['id'] == row['id'])
+                    label = f"{'✅' if is_sel else '📦'} {row['name']}\n{dur_text}\nRp {row['price']:,.0f}"
+                    if st.button(label, key=f"pkg_{row['id']}", use_container_width=True):
+                        st.session_state.selected_package = row.to_dict()
 
-                if st.button(label, key=f"pkg_{row['id']}", use_container_width=True):
-                    st.session_state.selected_package = row
+        # ---- Paket Shift ----
+        if not shift_pkgs.empty:
+            st.markdown("**🌙 Paket Waktu (Shift)**")
+            shift_cols = st.columns(len(shift_pkgs))
+            for i, (_, row) in enumerate(shift_pkgs.iterrows()):
+                with shift_cols[i]:
+                    available_now = shift_available(row)
+                    sh, eh = int(row['start_hour']), int(row['end_hour'])
+                    jam_info = f"{sh:02d}.00–{eh:02d}.00"
+                    hours = row['duration_minutes'] // 60
+                    is_sel = (st.session_state.selected_package is not None and
+                              st.session_state.selected_package['id'] == row['id'])
+                    label = f"{'✅' if is_sel else '🌙'} {row['name']}\n{jam_info} ({hours} Jam)\nRp {row['price']:,.0f}"
+                    if st.button(label, key=f"pkg_{row['id']}", use_container_width=True,
+                                 disabled=not available_now):
+                        st.session_state.selected_package = row.to_dict()
+                    if not available_now:
+                        st.caption(f"⏰ Hanya {jam_info}")
+
+        # ---- Paket Member ----
+        if not member_pkgs.empty:
+            st.markdown("**👑 Paket Member**")
+            mem_cols = st.columns(len(member_pkgs))
+            for i, (_, row) in enumerate(member_pkgs.iterrows()):
+                with mem_cols[i]:
+                    total_hours = row['duration_minutes'] // 60
+                    is_sel = (st.session_state.selected_package is not None and
+                              st.session_state.selected_package['id'] == row['id'])
+                    label = f"{'✅' if is_sel else '👑'} {row['name']}\n{total_hours} Jam\nRp {row['price']:,.0f}"
+                    if st.button(label, key=f"pkg_{row['id']}", use_container_width=True):
+                        st.session_state.selected_package = row.to_dict()
 
         selected_package = st.session_state.selected_package
         if selected_package is not None:
-            st.success(f"Paket dipilih: **{selected_package['name']}** - Rp {selected_package['price']:,.0f}")
+            pkg_name = selected_package['name']
+            pkg_price = selected_package['price']
+            pkg_dur = selected_package['duration_minutes']
+            st.success(f"Paket dipilih: **{pkg_name}** — {pkg_dur // 60} Jam — Rp {pkg_price:,.0f}")
+        else:
+            selected_package = None
     
     # Form manual (custom durasi)
     st.markdown("---")
@@ -650,10 +700,11 @@ elif menu == "💰 Kasir":
                 st.stop()
             
             db.start_session(pc_id, customer_name, duration, price)
-            st.success(f"✅ Sesi dimulai!\nPC {selected_pc} - {customer_name} - {duration} menit - Rp {price:,.0f}")
-            st.session_state.selected_package = None  # Reset pilihan paket
+            st.success(f"✅ Sesi dimulai! PC {selected_pc} — {customer_name} — {duration} menit — Rp {price:,.0f}")
+            st.session_state.selected_package = None
             st.balloons()
             st.rerun()
+
 
 
 # ==================== MANAJEMEN HARGA ====================
@@ -665,25 +716,38 @@ elif menu == "⚙️ Manajemen Harga":
     st.subheader("📦 Daftar Paket Aktif")
     packages = db.get_packages()
     
+    TYPE_LABEL = {'regular': '⏱️ Regular', 'member': '👑 Member', 'shift': '🌙 Shift'}
+
     if not packages.empty:
-        # Tabel paket dengan aksi hapus
-        for idx, row in packages.iterrows():
-            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-            
-            with col1:
-                st.write(f"**{row['name']}**")
-            with col2:
-                duration = f"{row['duration_minutes']//60} Jam" if row['duration_minutes'] % 60 == 0 else f"{row['duration_minutes']//60} Jam {row['duration_minutes']%60} Menit"
-                st.write(duration)
-            with col3:
-                st.write(f"Rp {row['price']:,.0f}")
-            with col4:
-                if st.button("🗑️", key=f"del_{row['id']}"):
-                    db.delete_package(row['id'])  # Soft delete
-                    st.success(f"Paket '{row['name']}' telah dinonaktifkan!")
-                    st.rerun()
+        for pkg_type, type_label in [('regular', '⏱️ Paket Regular'), ('shift', '🌙 Paket Shift'), ('member', '👑 Paket Member')]:
+            grp = packages[packages['package_type'] == pkg_type]
+            if grp.empty:
+                continue
+            st.markdown(f"**{type_label}**")
+            for idx, row in grp.iterrows():
+                col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+                with col1:
+                    st.write(f"**{row['name']}**")
+                with col2:
+                    total_h = row['duration_minutes'] // 60
+                    total_m = row['duration_minutes'] % 60
+                    dur_str = f"{total_h} Jam" if total_m == 0 else f"{total_h}j {total_m}m"
+                    st.write(dur_str)
+                with col3:
+                    st.write(f"Rp {row['price']:,.0f}")
+                with col4:
+                    if row['package_type'] == 'shift' and row['start_hour'] is not None:
+                        sh, eh = int(row['start_hour']), int(row['end_hour'])
+                        st.write(f"🕐 {sh:02d}.00–{eh:02d}.00")
+                    else:
+                        st.write("—")
+                with col5:
+                    if st.button("🗑️", key=f"del_{row['id']}"):
+                        db.delete_package(row['id'])
+                        st.success(f"Paket '{row['name']}' dinonaktifkan!")
+                        st.rerun()
+            st.markdown("")
         
-        # Atau bisa juga pakai dataframe dengan tombol di st.columns
         st.markdown("---")
     else:
         st.info("Belum ada paket. Silakan tambahkan.")
@@ -692,22 +756,32 @@ elif menu == "⚙️ Manajemen Harga":
     
     # Form tambah paket
     st.subheader("➕ Tambah Paket Baru")
-    col1, col2, col3 = st.columns(3)
-    
+
+    col1, col2 = st.columns(2)
     with col1:
         new_name = st.text_input("Nama Paket", placeholder="Contoh: Paket Gaming")
+        new_type = st.selectbox("Tipe Paket", ['regular', 'shift', 'member'],
+                                format_func=lambda x: {'regular': '⏱️ Regular', 'shift': '🌙 Shift (Jam Tertentu)', 'member': '👑 Member'}[x])
     with col2:
-        new_hours = st.number_input("Durasi (Jam)", min_value=0, max_value=12, value=1, key="new_hours")
-        new_mins = st.number_input("Durasi (Menit Tambahan)", min_value=0, max_value=59, value=0, key="new_mins")
+        new_hours = st.number_input("Durasi (Jam)", min_value=0, max_value=720, value=1, key="new_hours")
+        new_mins  = st.number_input("Durasi (Menit Tambahan)", min_value=0, max_value=59, value=0, key="new_mins")
         new_duration = (new_hours * 60) + new_mins
         st.caption(f"Total: {new_duration} menit")
-    with col3:
         new_price = st.number_input("Harga (Rp)", min_value=0, step=1000, value=5000, key="new_price")
+
+    new_start_hour, new_end_hour = None, None
+    if new_type == 'shift':
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            new_start_hour = st.number_input("Mulai Jam (0–23)", min_value=0, max_value=23, value=7)
+        with sc2:
+            new_end_hour = st.number_input("Selesai Jam (0–23)", min_value=0, max_value=23, value=13)
+        st.caption(f"Paket aktif pada jam {new_start_hour:02d}.00 – {new_end_hour:02d}.00")
     
     if st.button("💾 Simpan Paket", key="save_package"):
         if new_name and new_duration > 0 and new_price > 0:
             try:
-                db.add_package(new_name, new_duration, new_price)
+                db.add_package(new_name, new_duration, new_price, new_type, new_start_hour, new_end_hour)
                 st.success(f"Paket '{new_name}' berhasil ditambahkan!")
                 st.rerun()
             except Exception as e:
@@ -716,7 +790,4 @@ elif menu == "⚙️ Manajemen Harga":
             st.warning("Isi semua field dengan benar!")
     
     st.markdown("---")
-    
-    # Informasi harga default
-    st.info("💡 **Informasi:** Harga default adalah Rp 100 per menit (Rp 6.000 per jam). Anda bisa membuat paket dengan harga khusus di atas.")
-
+    st.info("💡 **Info:** Custom durasi di Kasir dihitung Rp 100/menit. Paket Shift hanya bisa dipilih saat jam yang sesuai.")
