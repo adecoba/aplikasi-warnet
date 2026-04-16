@@ -66,7 +66,7 @@ def init_database():
     # Insert data komputer awal (10 PC)
     cursor.execute("SELECT COUNT(*) FROM computers")
     if cursor.fetchone()[0] == 0:
-        for i in range(1, 11):
+        for i in range(1, 37):
             cursor.execute("INSERT INTO computers (pc_number, status) VALUES (?, ?)", (i, 'available'))
     
     # Insert paket harga default
