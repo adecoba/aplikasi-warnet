@@ -666,14 +666,25 @@ elif menu == "⚙️ Manajemen Harga":
     packages = db.get_packages()
     
     if not packages.empty:
-        # Tabel paket
-        display_packages = packages[['name', 'duration_minutes', 'price']]
-        display_packages['duration_minutes'] = display_packages['duration_minutes'].apply(
-            lambda x: f"{x//60} Jam" if x % 60 == 0 else f"{x//60} Jam {x%60} Menit"
-        )
-        display_packages['price'] = display_packages['price'].apply(lambda x: f"Rp {x:,.0f}")
-        display_packages.columns = ['Nama Paket', 'Durasi', 'Harga']
-        st.dataframe(display_packages, use_container_width=True)
+        # Tabel paket dengan aksi hapus
+        for idx, row in packages.iterrows():
+            col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+            
+            with col1:
+                st.write(f"**{row['name']}**")
+            with col2:
+                duration = f"{row['duration_minutes']//60} Jam" if row['duration_minutes'] % 60 == 0 else f"{row['duration_minutes']//60} Jam {row['duration_minutes']%60} Menit"
+                st.write(duration)
+            with col3:
+                st.write(f"Rp {row['price']:,.0f}")
+            with col4:
+                if st.button("🗑️", key=f"del_{row['id']}"):
+                    db.delete_package(row['id'])  # Soft delete
+                    st.success(f"Paket '{row['name']}' telah dinonaktifkan!")
+                    st.rerun()
+        
+        # Atau bisa juga pakai dataframe dengan tombol di st.columns
+        st.markdown("---")
     else:
         st.info("Belum ada paket. Silakan tambahkan.")
     

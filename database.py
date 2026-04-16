@@ -209,6 +209,29 @@ def delete_package(package_id):
     conn.commit()
     conn.close()
 
+def delete_package_permanently(package_id):
+    """Hapus paket secara permanen (HANYA jika tidak ada sesi yang menggunakan)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    # Cek apakah paket pernah digunakan
+    cursor.execute("""
+        SELECT COUNT(*) FROM sessions s
+        JOIN packages p ON p.duration_minutes = s.duration_minutes
+        WHERE p.id = ?
+    """, (package_id,))
+    
+    used_count = cursor.fetchone()[0]
+    
+    if used_count > 0:
+        conn.close()
+        raise ValueError("Paket tidak dapat dihapus karena sudah pernah digunakan dalam transaksi")
+    
+    # Hapus permanen
+    cursor.execute("DELETE FROM packages WHERE id = ?", (package_id,))
+    conn.commit()
+    conn.close()
+
 def get_daily_report(date):
     conn = get_connection()
     query = '''
