@@ -779,11 +779,12 @@ elif menu == "📈 Analisis Data":
 
     etl.init_warehouse()
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📅 Tren Pendapatan",
         "⏰ Jam & Hari Tersibuk",
         "💻 Performa per PC",
-        "🔮 Prediksi Pendapatan"
+        "🔮 Prediksi Pendapatan",
+        "📦 Paket Paling Populer"
     ])
 
     with tab1:
@@ -1044,6 +1045,161 @@ elif menu == "📈 Analisis Data":
             with col3:
                 st.metric("Data Historis", f"{n} minggu")
             st.caption("R² mendekati 1.0 berarti model sangat sesuai dengan data historis.")
+
+    with tab5:
+        st.subheader("📦 Analisis Popularitas Paket")
+        st.caption("Paket mana yang paling sering dipilih pelanggan, kapan, dan kontribusinya terhadap pendapatan.")
+
+        pkg_df, trend_pkg_df, day_pkg_df, hour_pkg_df = etl.query_package_popularity()
+
+        if pkg_df.empty:
+            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu di menu 🗄️ Data Warehouse & ETL.")
+        else:
+            # ── KPI ──────────────────────────────────────────────────────────
+            top_pkg = pkg_df.iloc[0]
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("🏆 Paket Terpopuler", top_pkg['nama_paket'])
+            with col2:
+                st.metric("📊 Total Sesi Paket Ini", f"{int(top_pkg['total_sesi']):,}")
+            with col3:
+                st.metric("💰 Kontribusi Pendapatan", f"Rp {int(top_pkg['total_pendapatan']):,}")
+
+            st.markdown("---")
+
+            # ── Pie chart: proporsi sesi per paket ───────────────────────────
+            col_pie, col_bar = st.columns(2)
+            with col_pie:
+                fig_pie = px.pie(
+                    pkg_df,
+                    values='total_sesi',
+                    names='nama_paket',
+                    title="Proporsi Jumlah Sesi per Paket",
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                fig_pie.update_layout(paper_bgcolor='rgba(0,0,0,0)', showlegend=False)
+                st.plotly_chart(fig_pie, use_container_width=True)
+
+            # ── Bar chart: pendapatan per paket ───────────────────────────────
+            with col_bar:
+                fig_rev = px.bar(
+                    pkg_df,
+                    x='nama_paket',
+                    y='total_pendapatan',
+                    title="Total Pendapatan per Paket",
+                    labels={'nama_paket': 'Paket', 'total_pendapatan': 'Pendapatan (Rp)'},
+                    color='total_pendapatan',
+                    color_continuous_scale='Teal',
+                    text='total_pendapatan'
+                )
+                fig_rev.update_traces(texttemplate='Rp%{text:,.0f}', textposition='outside')
+                fig_rev.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    xaxis_tickangle=-30
+                )
+                st.plotly_chart(fig_rev, use_container_width=True)
+
+            # ── Tabel ringkasan paket ─────────────────────────────────────────
+            st.subheader("📋 Ringkasan Semua Paket")
+            display_pkg = pkg_df.copy()
+            display_pkg['total_pendapatan'] = display_pkg['total_pendapatan'].apply(lambda x: f"Rp {x:,.0f}")
+            display_pkg['rata_harga']       = display_pkg['rata_harga'].apply(lambda x: f"Rp {x:,.0f}")
+            display_pkg['persen_sesi']      = display_pkg['persen_sesi'].apply(lambda x: f"{x:.1f}%")
+            display_pkg['duration_minutes'] = display_pkg['duration_minutes'].apply(
+                lambda x: f"{x//60} Jam" if x % 60 == 0 else f"{x//60}j {x%60}m"
+            )
+            display_pkg = display_pkg.drop(columns=['price_per_minute'])
+            display_pkg.columns = ['Nama Paket', 'Durasi', 'Total Sesi',
+                                   'Total Pendapatan', 'Rata-rata Harga', '% dari Sesi']
+            st.dataframe(display_pkg, use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+
+            # ── Tren paket per minggu ─────────────────────────────────────────
+            if not trend_pkg_df.empty:
+                st.subheader("📈 Tren Popularitas Paket per Minggu")
+                fig_trend = px.line(
+                    trend_pkg_df,
+                    x='periode',
+                    y='total_sesi',
+                    color='nama_paket',
+                    title="Jumlah Sesi per Paket per Minggu",
+                    labels={'periode': 'Periode', 'total_sesi': 'Jumlah Sesi', 'nama_paket': 'Paket'},
+                    markers=True
+                )
+                fig_trend.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02)
+                )
+                st.plotly_chart(fig_trend, use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Paket populer per hari ────────────────────────────────────────
+            col_day, col_hour = st.columns(2)
+
+            with col_day:
+                st.subheader("📅 Paket Terpopuler per Hari")
+                day_label_map = {
+                    'Monday':'Senin','Tuesday':'Selasa','Wednesday':'Rabu',
+                    'Thursday':'Kamis','Friday':'Jumat','Saturday':'Sabtu','Sunday':'Minggu'
+                }
+                if not day_pkg_df.empty:
+                    # Ambil paket teratas per hari
+                    top_day = (
+                        day_pkg_df.sort_values('total_sesi', ascending=False)
+                        .groupby('day_of_week', sort=False).first().reset_index()
+                    )
+                    day_order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
+                    top_day['day_label'] = top_day['day_of_week'].map(day_label_map)
+                    top_day = top_day.set_index('day_of_week').reindex(day_order).reset_index()
+                    top_day['day_label'] = top_day['day_of_week'].map(day_label_map)
+                    top_day_clean = top_day.dropna(subset=['nama_paket'])
+
+                    fig_day_pkg = px.bar(
+                        top_day_clean,
+                        x='day_label', y='total_sesi',
+                        color='nama_paket',
+                        title="Paket Terpopuler per Hari",
+                        labels={'day_label': 'Hari', 'total_sesi': 'Jumlah Sesi', 'nama_paket': 'Paket'}
+                    )
+                    fig_day_pkg.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend_title_text='Paket'
+                    )
+                    st.plotly_chart(fig_day_pkg, use_container_width=True)
+                else:
+                    st.info("Data per hari belum tersedia.")
+
+            # ── Paket populer per jam ─────────────────────────────────────────
+            with col_hour:
+                st.subheader("🕐 Paket Terpopuler per Jam")
+                if not hour_pkg_df.empty:
+                    # Ambil paket teratas per jam
+                    top_hour = (
+                        hour_pkg_df.sort_values('total_sesi', ascending=False)
+                        .groupby('start_hour', sort=False).first().reset_index()
+                        .sort_values('start_hour')
+                    )
+                    fig_hour_pkg = px.bar(
+                        top_hour,
+                        x='start_hour', y='total_sesi',
+                        color='nama_paket',
+                        title="Paket Terpopuler per Jam",
+                        labels={'start_hour': 'Jam', 'total_sesi': 'Jumlah Sesi', 'nama_paket': 'Paket'}
+                    )
+                    fig_hour_pkg.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend_title_text='Paket'
+                    )
+                    st.plotly_chart(fig_hour_pkg, use_container_width=True)
+                else:
+                    st.info("Data per jam belum tersedia.")
 
 # ==================== DATA WAREHOUSE & ETL ====================
 elif menu == "🗄️ Data Warehouse & ETL":

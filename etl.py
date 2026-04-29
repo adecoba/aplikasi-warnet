@@ -386,6 +386,75 @@ def query_etl_log():
     conn.close()
     return df
 
+def query_package_popularity():
+    """Analisis paket yang paling sering diambil dari Data Warehouse."""
+    conn = get_dw_connection()
+
+    # Popularitas berdasarkan jumlah sesi & pendapatan per paket
+    pkg_q = '''
+        SELECT
+            dp.duration_label                   AS nama_paket,
+            dp.duration_minutes,
+            dp.price_per_minute,
+            COUNT(f.fact_id)                    AS total_sesi,
+            SUM(f.total_price)                  AS total_pendapatan,
+            AVG(f.total_price)                  AS rata_harga,
+            ROUND(COUNT(f.fact_id) * 100.0 /
+                (SELECT COUNT(*) FROM fact_sessions), 2) AS persen_sesi
+        FROM fact_sessions f
+        JOIN dim_package dp ON f.package_id = dp.package_id
+        GROUP BY dp.package_id
+        ORDER BY total_sesi DESC
+    '''
+
+    # Tren paket per minggu (untuk melihat perubahan preferensi)
+    trend_q = '''
+        SELECT
+            dt.year || '-W' || printf('%02d', dt.week_number) AS periode,
+            dp.duration_label                                  AS nama_paket,
+            COUNT(f.fact_id)                                   AS total_sesi
+        FROM fact_sessions f
+        JOIN dim_time    dt ON f.time_id    = dt.time_id
+        JOIN dim_package dp ON f.package_id = dp.package_id
+        GROUP BY dt.year, dt.week_number, dp.package_id
+        ORDER BY dt.year, dt.week_number
+    '''
+
+    # Paket populer per hari (senin-minggu)
+    day_pkg_q = '''
+        SELECT
+            dt.day_of_week,
+            dt.day_number,
+            dp.duration_label  AS nama_paket,
+            COUNT(f.fact_id)   AS total_sesi
+        FROM fact_sessions f
+        JOIN dim_time    dt ON f.time_id    = dt.time_id
+        JOIN dim_package dp ON f.package_id = dp.package_id
+        GROUP BY dt.day_number, dt.day_of_week, dp.package_id
+        ORDER BY dt.day_number, total_sesi DESC
+    '''
+
+    # Paket populer per jam
+    hour_pkg_q = '''
+        SELECT
+            f.start_hour,
+            dp.duration_label  AS nama_paket,
+            COUNT(f.fact_id)   AS total_sesi
+        FROM fact_sessions f
+        JOIN dim_package dp ON f.package_id = dp.package_id
+        GROUP BY f.start_hour, dp.package_id
+        ORDER BY f.start_hour, total_sesi DESC
+    '''
+
+    pkg_df      = pd.read_sql_query(pkg_q,      conn)
+    trend_df    = pd.read_sql_query(trend_q,    conn)
+    day_pkg_df  = pd.read_sql_query(day_pkg_q,  conn)
+    hour_pkg_df = pd.read_sql_query(hour_pkg_q, conn)
+
+    conn.close()
+    return pkg_df, trend_df, day_pkg_df, hour_pkg_df
+
+
 def get_dw_summary():
     conn = get_dw_connection()
     facts = pd.read_sql_query("SELECT COUNT(*) AS n FROM fact_sessions", conn).iloc[0]['n']
