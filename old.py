@@ -119,8 +119,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "Menu Utama",
-    ["📊 Dashboard", "🖥️ Peta PC", "💰 Kasir", "⚙️ Manajemen Harga",
-     "📈 Analisis Data", "🗄️ Data Warehouse & ETL"]
+    ["📊 Dashboard", "🖥️ Peta PC", "💰 Kasir","⚙️ Manajemen Harga"]
 )
 
 st.sidebar.markdown("---")
@@ -173,12 +172,16 @@ if menu == "📊 Dashboard":
     
     # Daftar sesi aktif dengan countdown real-time
     st.subheader("🟢 Sesi Aktif Saat Ini")
+   # Di bagian DASHBOARD, ganti sessions_js menjadi:
+
     if not active_sessions.empty:
         sessions_js = []
         for _, row in active_sessions.iterrows():
+            # Konversi ke timestamp dengan aman
             start_str = str(row['start_time'])
             end_str = str(row['end_time'])
             
+            # Parse string ke datetime
             if '.' in start_str:
                 start_dt = datetime.strptime(start_str, '%Y-%m-%d %H:%M:%S.%f')
             else:
@@ -366,106 +369,108 @@ if menu == "📊 Dashboard":
             <div class="monitor-grid" id="session-grid"></div>
         </div>
 
-        <script>
-        const sessions = {sessions_json};
+<script>
+const sessions = {sessions_json};
 
-        function parseDate(timestamp) {{
-            return new Date(timestamp);
-        }}
+// Langsung pakai timestamp, tidak perlu parse string
+function parseDate(timestamp) {{
+    return new Date(timestamp);
+}}
 
-        function formatCountdown(ms) {{
-            if (ms <= 0) return '00:00:00';
-            const totalSec = Math.floor(ms / 1000);
-            const h = Math.floor(totalSec / 3600);
-            const m = Math.floor((totalSec % 3600) / 60);
-            const s = totalSec % 60;
-            return [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
-        }}
+function formatCountdown(ms) {{
+    if (ms <= 0) return '00:00:00';
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
+}}
 
-        function formatTime(timestamp) {{
-            const d = new Date(timestamp);
-            return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
-        }}
+function formatTime(timestamp) {{
+    const d = new Date(timestamp);
+    return d.toLocaleTimeString('id-ID', {{hour:'2-digit', minute:'2-digit'}});
+}}
 
-        function getState(ms, totalMs) {{
-            const pct = ms / totalMs;
-            if (ms <= 0) return 'danger';
-            if (pct <= 0.15) return 'danger';
-            if (pct <= 0.30) return 'warning';
-            return 'normal';
-        }}
+function getState(ms, totalMs) {{
+    const pct = ms / totalMs;
+    if (ms <= 0) return 'danger';
+    if (pct <= 0.15) return 'danger';
+    if (pct <= 0.30) return 'warning';
+    return 'normal';
+}}
 
-        function buildCards() {{
-            const grid = document.getElementById('session-grid');
-            grid.innerHTML = '';
-            sessions.forEach((s, i) => {{
-                const card = document.createElement('div');
-                card.className = 'session-card';
-                card.id = 'card-' + i;
-                card.innerHTML = `
-                    <div class="card-header">
-                        <span class="pc-badge">PC ${{s.pc}}</span>
-                        <span class="status-dot" id="dot-${{i}}"></span>
+function buildCards() {{
+    const grid = document.getElementById('session-grid');
+    grid.innerHTML = '';
+    sessions.forEach((s, i) => {{
+        const card = document.createElement('div');
+        card.className = 'session-card';
+        card.id = 'card-' + i;
+        card.innerHTML = `
+            <div class="card-header">
+                <span class="pc-badge">PC ${{s.pc}}</span>
+                <span class="status-dot" id="dot-${{i}}"></span>
+            </div>
+            <div class="customer-name">${{s.name}}</div>
+            <div class="session-meta">Mulai ${{formatTime(s.start_ts)}} &rarr; Selesai ${{formatTime(s.end_ts)}} &bull; ${{s.duration}} menit</div>
+            <div class="countdown-block">
+                <div>
+                    <div class="countdown-label">Sisa Waktu</div>
+                    <div class="countdown-time" id="timer-${{i}}">--:--:--</div>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="bar-${{i}}" style="width:100%"></div>
                     </div>
-                    <div class="customer-name">${{s.name}}</div>
-                    <div class="session-meta">Mulai ${{formatTime(s.start_ts)}} &rarr; Selesai ${{formatTime(s.end_ts)}} &bull; ${{s.duration}} menit</div>
-                    <div class="countdown-block">
-                        <div>
-                            <div class="countdown-label">Sisa Waktu</div>
-                            <div class="countdown-time" id="timer-${{i}}">--:--:--</div>
-                        </div>
-                        <div class="progress-wrap">
-                            <div class="progress-bar-bg">
-                                <div class="progress-bar-fill" id="bar-${{i}}" style="width:100%"></div>
-                            </div>
-                            <div class="progress-pct" id="pct-${{i}}">100%</div>
-                        </div>
-                    </div>
-                `;
-                grid.appendChild(card);
-            }});
+                    <div class="progress-pct" id="pct-${{i}}">100%</div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+    }});
+}}
+
+function tick() {{
+    const now = new Date();
+    document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
+
+    sessions.forEach((s, i) => {{
+        const endTime = parseDate(s.end_ts);
+        const startTime = parseDate(s.start_ts);
+        const totalMs = endTime - startTime;
+        const remainMs = endTime - now;
+        const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
+        const state = getState(remainMs, totalMs);
+
+        const timerEl = document.getElementById('timer-' + i);
+        const barEl = document.getElementById('bar-' + i);
+        const pctEl = document.getElementById('pct-' + i);
+        const dotEl = document.getElementById('dot-' + i);
+        const cardEl = document.getElementById('card-' + i);
+
+        if (timerEl) {{
+            timerEl.textContent = remainMs > 0 ? formatCountdown(remainMs) : 'HABIS';
+            timerEl.className = 'countdown-time' + (state !== 'normal' ? ' ' + state : '');
         }}
-
-        function tick() {{
-            const now = new Date();
-            document.getElementById('live-clock').textContent = now.toLocaleTimeString('id-ID');
-
-            sessions.forEach((s, i) => {{
-                const endTime = parseDate(s.end_ts);
-                const startTime = parseDate(s.start_ts);
-                const totalMs = endTime - startTime;
-                const remainMs = endTime - now;
-                const pct = Math.max(0, Math.min(100, (remainMs / totalMs) * 100));
-                const state = getState(remainMs, totalMs);
-
-                const timerEl = document.getElementById('timer-' + i);
-                const barEl = document.getElementById('bar-' + i);
-                const pctEl = document.getElementById('pct-' + i);
-                const dotEl = document.getElementById('dot-' + i);
-                const cardEl = document.getElementById('card-' + i);
-
-                if (timerEl) {{
-                    timerEl.textContent = remainMs > 0 ? formatCountdown(remainMs) : 'HABIS';
-                    timerEl.className = 'countdown-time' + (state !== 'normal' ? ' ' + state : '');
-                }}
-                if (barEl) {{
-                    barEl.style.width = pct.toFixed(1) + '%';
-                    barEl.className = 'progress-bar-fill' + (state !== 'normal' ? ' ' + state : '');
-                }}
-                if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
-                if (dotEl) dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
-                if (cardEl) cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
-            }});
+        if (barEl) {{
+            barEl.style.width = pct.toFixed(1) + '%';
+            barEl.className = 'progress-bar-fill' + (state !== 'normal' ? ' ' + state : '');
         }}
+        if (pctEl) pctEl.textContent = pct.toFixed(0) + '%';
+        if (dotEl) dotEl.className = 'status-dot' + (state !== 'normal' ? ' ' + state : '');
+        if (cardEl) cardEl.className = 'session-card' + (state !== 'normal' ? ' ' + state : '');
+    }});
+}}
 
-        buildCards();
-        tick();
-        setInterval(tick, 1000);
-        </script>
+buildCards();
+tick();
+setInterval(tick, 1000);
+</script>
         """
 
         st.components.v1.html(countdown_html, height=max(200, (len(sessions_js) // 3 + 1) * 220 + 80), scrolling=False)
 
+        # Auto-refresh halaman setiap 60 detik untuk sync data dari DB
         st.caption("🔄 Data otomatis diperbarui setiap 60 detik")
         st.markdown("""
         <script>
@@ -483,6 +488,7 @@ elif menu == "🖥️ Peta PC":
     
     computers = db.get_all_computers()
     
+    # Tampilkan dalam grid (3 kolom)
     cols = st.columns(5)
     
     for idx, row in computers.iterrows():
@@ -510,6 +516,7 @@ elif menu == "🖥️ Peta PC":
             
             st.markdown("<br>", unsafe_allow_html=True)
     
+    # Form untuk tambah waktu atau hentikan sesi
     st.markdown("---")
     st.subheader("🔧 Kontrol PC")
     
@@ -574,6 +581,7 @@ elif menu == "💰 Kasir":
     
     st.markdown("---")
     
+    # Pilihan paket per kategori
     st.subheader("📦 Pilih Paket")
 
     if 'selected_package' not in st.session_state:
@@ -582,18 +590,22 @@ elif menu == "💰 Kasir":
     if not packages.empty:
         now_hour = db.get_now_gmt7().hour
 
+        # Helper: cek apakah shift tersedia sekarang
         def shift_available(pkg_row):
             if pkg_row['package_type'] != 'shift':
                 return True
             sh, eh = int(pkg_row['start_hour']), int(pkg_row['end_hour'])
+            # Shift malam: 22–05 (melewati tengah malam)
             if sh > eh:
                 return now_hour >= sh or now_hour < eh
             return sh <= now_hour < eh
 
+        # Kelompokkan paket
         regular_pkgs = packages[packages['package_type'] == 'regular']
         member_pkgs  = packages[packages['package_type'] == 'member']
         shift_pkgs   = packages[packages['package_type'] == 'shift']
 
+        # ---- Paket Regular ----
         if not regular_pkgs.empty:
             st.markdown("**⏱️ Paket Regular**")
             pkg_cols = st.columns(len(regular_pkgs))
@@ -608,6 +620,7 @@ elif menu == "💰 Kasir":
                     if st.button(label, key=f"pkg_{row['id']}", use_container_width=True):
                         st.session_state.selected_package = row.to_dict()
 
+        # ---- Paket Shift ----
         if not shift_pkgs.empty:
             st.markdown("**🌙 Paket Waktu (Shift)**")
             shift_cols = st.columns(len(shift_pkgs))
@@ -626,6 +639,7 @@ elif menu == "💰 Kasir":
                     if not available_now:
                         st.caption(f"⏰ Hanya {jam_info}")
 
+        # ---- Paket Member ----
         if not member_pkgs.empty:
             st.markdown("**👑 Paket Member**")
             mem_cols = st.columns(len(member_pkgs))
@@ -647,6 +661,7 @@ elif menu == "💰 Kasir":
         else:
             selected_package = None
     
+    # Form manual (custom durasi)
     st.markdown("---")
     st.subheader("⚙️ Custom Durasi")
     
@@ -658,11 +673,12 @@ elif menu == "💰 Kasir":
     with col3:
         total_custom_minutes = (custom_hours * 60) + custom_minutes
         if total_custom_minutes > 0:
-            custom_price = total_custom_minutes * 100
+            custom_price = total_custom_minutes * 100  # Rp 100 per menit
             st.metric("Total Harga", f"Rp {custom_price:,.0f}")
         else:
             st.info("Masukkan durasi")
     
+    # Proses transaksi
     st.markdown("---")
     
     if st.button("✅ MULAI SESI", type="primary", use_container_width=True):
@@ -689,11 +705,14 @@ elif menu == "💰 Kasir":
             st.balloons()
             st.rerun()
 
+
+
 # ==================== MANAJEMEN HARGA ====================
 elif menu == "⚙️ Manajemen Harga":
     st.title("⚙️ Manajemen Harga & Paket")
     st.markdown("---")
     
+    # Tampilkan paket yang ada
     st.subheader("📦 Daftar Paket Aktif")
     packages = db.get_packages()
     
@@ -735,6 +754,7 @@ elif menu == "⚙️ Manajemen Harga":
     
     st.markdown("---")
     
+    # Form tambah paket
     st.subheader("➕ Tambah Paket Baru")
 
     col1, col2 = st.columns(2)
@@ -771,429 +791,3 @@ elif menu == "⚙️ Manajemen Harga":
     
     st.markdown("---")
     st.info("💡 **Info:** Custom durasi di Kasir dihitung Rp 100/menit. Paket Shift hanya bisa dipilih saat jam yang sesuai.")
-
-# ==================== ANALISIS DATA ====================
-elif menu == "📈 Analisis Data":
-    st.title("📈 Analisis Data Penggunaan Warnet")
-    st.markdown("---")
-
-    etl.init_warehouse()
-
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📅 Tren Pendapatan",
-        "⏰ Jam & Hari Tersibuk",
-        "💻 Performa per PC",
-        "🔮 Prediksi Pendapatan"
-    ])
-
-    with tab1:
-        st.subheader("📅 Tren Pendapatan")
-        period = st.radio("Tampilkan per", ["Mingguan", "Bulanan"], horizontal=True)
-        period_key = "weekly" if period == "Mingguan" else "monthly"
-
-        trend_df = etl.query_revenue_trend(period_key)
-
-        if trend_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu di menu 🗄️ Data Warehouse & ETL.")
-        else:
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Pendapatan", f"Rp {trend_df['total_revenue'].sum():,.0f}")
-            with col2:
-                st.metric("Total Sesi", f"{trend_df['total_sessions'].sum():,.0f}")
-            with col3:
-                st.metric("Rata-rata Durasi", f"{trend_df['avg_duration'].mean():.0f} menit")
-
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=trend_df['label'], y=trend_df['total_revenue'],
-                name='Pendapatan', marker_color='#0099ff',
-                opacity=0.8
-            ))
-            fig.add_trace(go.Scatter(
-                x=trend_df['label'], y=trend_df['total_revenue'],
-                mode='lines+markers', name='Tren',
-                line=dict(color='#00d4aa', width=2),
-                marker=dict(size=6)
-            ))
-            fig.update_layout(
-                title=f"Tren Pendapatan {period}",
-                xaxis_title="Periode", yaxis_title="Pendapatan (Rp)",
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            fig2 = px.bar(
-                trend_df, x='label', y='total_sessions',
-                title=f"Jumlah Sesi {period}",
-                labels={'label': 'Periode', 'total_sessions': 'Jumlah Sesi'},
-                color_discrete_sequence=['#FF6B6B']
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-            st.subheader("📋 Tabel Data Tren")
-            display_df = trend_df[['label','total_revenue','total_sessions','avg_duration']].copy()
-            display_df.columns = ['Periode','Total Pendapatan (Rp)','Jumlah Sesi','Rata-rata Durasi (mnt)']
-            display_df['Total Pendapatan (Rp)'] = display_df['Total Pendapatan (Rp)'].apply(lambda x: f"Rp {x:,.0f}")
-            display_df['Rata-rata Durasi (mnt)'] = display_df['Rata-rata Durasi (mnt)'].apply(lambda x: f"{x:.1f}")
-            st.dataframe(display_df, use_container_width=True)
-
-    with tab2:
-        st.subheader("⏰ Analisis Jam & Hari Tersibuk")
-
-        hour_df, day_df = etl.query_busiest_hours()
-
-        if hour_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu.")
-        else:
-            col1, col2 = st.columns(2)
-
-            with col1:
-                fig_hour = px.bar(
-                    hour_df, x='start_hour', y='total_sessions',
-                    title="Distribusi Sesi per Jam",
-                    labels={'start_hour': 'Jam', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Blues'
-                )
-                fig_hour.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_hour, use_container_width=True)
-
-                if not hour_df.empty:
-                    peak = hour_df.loc[hour_df['total_sessions'].idxmax()]
-                    st.success(f"🕐 **Jam Tersibuk:** {int(peak['start_hour']):02d}.00 — {int(peak['total_sessions'])} sesi")
-
-            with col2:
-                day_order = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-                day_label = {'Monday':'Senin','Tuesday':'Selasa','Wednesday':'Rabu',
-                             'Thursday':'Kamis','Friday':'Jumat','Saturday':'Sabtu','Sunday':'Minggu'}
-                day_df['day_label'] = day_df['day_of_week'].map(day_label)
-                day_df_sorted = day_df.set_index('day_of_week').reindex(day_order).reset_index()
-                day_df_sorted['day_label'] = day_df_sorted['day_of_week'].map(day_label)
-
-                fig_day = px.bar(
-                    day_df_sorted.dropna(subset=['total_sessions']),
-                    x='day_label', y='total_sessions',
-                    title="Distribusi Sesi per Hari",
-                    labels={'day_label': 'Hari', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Oranges'
-                )
-                fig_day.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_day, use_container_width=True)
-
-                if not day_df.empty and 'total_sessions' in day_df.columns:
-                    valid = day_df.dropna(subset=['total_sessions'])
-                    if not valid.empty:
-                        busiest_day = valid.loc[valid['total_sessions'].idxmax()]
-                        day_name = day_label.get(busiest_day['day_of_week'], busiest_day['day_of_week'])
-                        st.success(f"📅 **Hari Tersibuk:** {day_name} — {int(busiest_day['total_sessions'])} sesi")
-
-            st.subheader("💰 Pendapatan per Jam")
-            fig_rev_hour = px.area(
-                hour_df, x='start_hour', y='total_revenue',
-                title="Total Pendapatan per Jam",
-                labels={'start_hour': 'Jam', 'total_revenue': 'Pendapatan (Rp)'},
-                color_discrete_sequence=['#00d4aa']
-            )
-            st.plotly_chart(fig_rev_hour, use_container_width=True)
-
-    with tab3:
-        st.subheader("💻 Performa per PC")
-
-        pc_df = etl.query_pc_performance()
-
-        if pc_df.empty:
-            st.info("Belum ada data di Data Warehouse. Jalankan ETL terlebih dahulu.")
-        else:
-            col1, col2 = st.columns(2)
-
-            with col1:
-                fig_pc_rev = px.bar(
-                    pc_df, x='pc_number', y='total_revenue',
-                    title="Total Pendapatan per PC",
-                    labels={'pc_number': 'Nomor PC', 'total_revenue': 'Pendapatan (Rp)'},
-                    color='total_revenue',
-                    color_continuous_scale='Viridis',
-                    text='total_revenue'
-                )
-                fig_pc_rev.update_traces(texttemplate='Rp%{text:,.0f}', textposition='outside')
-                fig_pc_rev.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_pc_rev, use_container_width=True)
-
-            with col2:
-                fig_pc_ses = px.bar(
-                    pc_df, x='pc_number', y='total_sessions',
-                    title="Jumlah Sesi per PC",
-                    labels={'pc_number': 'Nomor PC', 'total_sessions': 'Jumlah Sesi'},
-                    color='total_sessions',
-                    color_continuous_scale='Plasma'
-                )
-                fig_pc_ses.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_pc_ses, use_container_width=True)
-
-            fig_pie = px.pie(
-                pc_df, values='total_revenue', names=pc_df['pc_number'].apply(lambda x: f"PC {x}"),
-                title="Kontribusi Pendapatan per PC",
-                color_discrete_sequence=px.colors.sequential.RdBu
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-
-            st.subheader("📋 Tabel Detail Performa PC")
-            display_pc = pc_df.copy()
-            display_pc['pc_number']          = display_pc['pc_number'].apply(lambda x: f"PC {x}")
-            display_pc['total_revenue']       = display_pc['total_revenue'].apply(lambda x: f"Rp {x:,.0f}")
-            display_pc['avg_duration']        = display_pc['avg_duration'].apply(lambda x: f"{x:.0f} mnt")
-            display_pc['total_usage_minutes'] = display_pc['total_usage_minutes'].apply(lambda x: f"{x/60:.1f} jam")
-            display_pc.columns = ['No PC','Spesifikasi','Total Sesi','Total Pendapatan',
-                                   'Rata-rata Durasi','Total Pemakaian']
-            st.dataframe(display_pc, use_container_width=True)
-
-            top_pc = pc_df.iloc[0]
-            st.success(f"🏆 **PC Paling Produktif:** PC {int(top_pc['pc_number'])} "
-                       f"— {int(top_pc['total_sessions'])} sesi, Rp {int(top_pc['total_revenue']):,}")
-
-    with tab4:
-        st.subheader("🔮 Prediksi Pendapatan (Forecasting)")
-        st.caption("Menggunakan Simple Linear Regression berdasarkan data historis mingguan.")
-
-        forecast_df = etl.query_forecasting()
-
-        if len(forecast_df) < 2:
-            st.info("Data historis belum cukup untuk prediksi. Dibutuhkan minimal 2 periode data. Jalankan ETL terlebih dahulu.")
-        else:
-            n = len(forecast_df)
-            x = np.arange(n)
-            y = forecast_df['total_revenue'].values.astype(float)
-
-            b = (n * np.dot(x, y) - x.sum() * y.sum()) / (n * np.dot(x, x) - x.sum()**2)
-            a = (y.sum() - b * x.sum()) / n
-
-            future_x    = np.arange(n, n + 4)
-            future_preds = a + b * future_x
-
-            last_year  = int(forecast_df.iloc[-1]['year'])
-            last_week  = int(forecast_df.iloc[-1]['week_number'])
-            future_labels = []
-            for i in range(1, 5):
-                w = last_week + i
-                y_label = last_year
-                if w > 52:
-                    w -= 52
-                    y_label += 1
-                future_labels.append(f"{y_label}-W{w:02d}")
-
-            hist_labels  = forecast_df['year'].astype(str) + '-W' + forecast_df['week_number'].apply(lambda w: f"{w:02d}")
-            fitted_vals  = a + b * x
-
-            fig_fore = go.Figure()
-            fig_fore.add_trace(go.Scatter(
-                x=hist_labels, y=y,
-                mode='lines+markers', name='Aktual',
-                line=dict(color='#0099ff', width=2),
-                marker=dict(size=7)
-            ))
-            fig_fore.add_trace(go.Scatter(
-                x=hist_labels, y=fitted_vals,
-                mode='lines', name='Garis Regresi',
-                line=dict(color='#00d4aa', width=1, dash='dot')
-            ))
-            fig_fore.add_trace(go.Scatter(
-                x=future_labels, y=future_preds,
-                mode='lines+markers', name='Prediksi',
-                line=dict(color='#FF6B6B', width=2, dash='dash'),
-                marker=dict(size=9, symbol='diamond')
-            ))
-            fig_fore.update_layout(
-                title="Prediksi Pendapatan 4 Minggu ke Depan",
-                xaxis_title="Periode Minggu",
-                yaxis_title="Pendapatan (Rp)",
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                legend=dict(orientation='h', yanchor='bottom', y=1.02)
-            )
-            st.plotly_chart(fig_fore, use_container_width=True)
-
-            st.subheader("📋 Tabel Prediksi")
-            pred_table = pd.DataFrame({
-                'Periode'           : future_labels,
-                'Prediksi Pendapatan': [f"Rp {max(0,p):,.0f}" for p in future_preds],
-            })
-            st.dataframe(pred_table, use_container_width=True)
-
-            r2 = 1 - np.sum((y - fitted_vals)**2) / np.sum((y - y.mean())**2) if y.std() > 0 else 0
-            trend_dir = "📈 Naik" if b > 0 else "📉 Turun"
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Arah Tren", trend_dir)
-            with col2:
-                st.metric("R² Model", f"{r2:.3f}")
-            with col3:
-                st.metric("Data Historis", f"{n} minggu")
-            st.caption("R² mendekati 1.0 berarti model sangat sesuai dengan data historis.")
-
-# ==================== DATA WAREHOUSE & ETL ====================
-elif menu == "🗄️ Data Warehouse & ETL":
-    st.title("🗄️ Data Warehouse & Proses ETL")
-    st.markdown("---")
-
-    etl.init_warehouse()
-
-    tab_etl, tab_schema, tab_log = st.tabs([
-        "▶️ Jalankan ETL",
-        "🗂️ Skema Data Warehouse",
-        "📋 Log ETL"
-    ])
-
-    with tab_etl:
-        st.subheader("▶️ Proses ETL (Extract → Transform → Load)")
-
-        st.markdown("""
-        **Alur kerja ETL:**
-        1. **Extract** — Mengambil data sesi selesai dari database operasional (`warnet.db`)
-        2. **Transform** — Membersihkan data, memperkaya dimensi waktu (hari, minggu, bulan, kuartal), dan memetakan ke star schema
-        3. **Load** — Memasukkan data ke tabel fakta & dimensi di Data Warehouse (`warehouse.db`)
-        """)
-
-        st.markdown("---")
-
-        summary = etl.get_dw_summary()
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("📊 Fact Sessions", summary['fact_sessions'])
-        with col2:
-            st.metric("📅 Dim. Waktu", summary['dim_time'])
-        with col3:
-            st.metric("💻 Dim. PC", summary['dim_pc'])
-        with col4:
-            st.metric("📦 Dim. Paket", summary['dim_package'])
-
-        st.markdown("---")
-
-        col_btn, col_info = st.columns([1, 3])
-        with col_btn:
-            run_btn = st.button("▶️ Jalankan ETL Sekarang", type="primary", use_container_width=True)
-        with col_info:
-            st.info("ETL hanya memproses data baru (incremental). Data yang sudah ada di DW tidak akan digandakan.")
-
-        if run_btn:
-            with st.spinner("Menjalankan ETL... Extract → Transform → Load"):
-                result = etl.run_etl()
-
-            if result['status'] == 'success':
-                st.success(f"✅ ETL Berhasil! {result['message']}")
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("📤 Diekstrak", result['rows_extracted'])
-                with col2:
-                    st.metric("🔄 Ditransformasi", result['rows_transformed'])
-                with col3:
-                    st.metric("📥 Dimuat", result['rows_loaded'])
-                st.rerun()
-            else:
-                st.error(f"❌ ETL Gagal: {result['message']}")
-
-    with tab_schema:
-        st.subheader("🗂️ Arsitektur Star Schema Data Warehouse")
-
-        st.markdown("""
-        Data Warehouse ini menggunakan **Star Schema** yang terdiri dari:
-        - **1 Tabel Fakta** → `fact_sessions` (pusat analisis)
-        - **3 Tabel Dimensi** → `dim_time`, `dim_pc`, `dim_package`
-        """)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**📊 fact_sessions** *(Tabel Fakta)*")
-            fact_schema = pd.DataFrame({
-                'Kolom'  : ['fact_id','session_id','time_id','pc_id','package_id',
-                            'customer_name','start_hour','duration_minutes',
-                            'total_price','revenue_per_min'],
-                'Tipe'   : ['INT PK','INT (FK)','INT (FK)','INT (FK)','INT (FK)',
-                            'TEXT','INT','INT','INT','REAL'],
-                'Keterangan': ['Primary Key','ID sesi dari OLTP','FK ke dim_time',
-                               'FK ke dim_pc','FK ke dim_package','Nama pelanggan',
-                               'Jam mulai (0–23)','Durasi menit',
-                               'Total pembayaran','Pendapatan per menit']
-            })
-            st.dataframe(fact_schema, use_container_width=True, hide_index=True)
-
-            st.markdown("**📅 dim_time** *(Dimensi Waktu)*")
-            time_schema = pd.DataFrame({
-                'Kolom'     : ['time_id','full_date','day_of_week','day_number',
-                               'week_number','month_number','month_name','quarter','year','is_weekend'],
-                'Keterangan': ['PK','Tanggal lengkap','Nama hari','Nomor hari (0=Senin)',
-                               'Nomor minggu ISO','Bulan (1–12)','Nama bulan',
-                               'Kuartal (1–4)','Tahun','1=Akhir pekan']
-            })
-            st.dataframe(time_schema, use_container_width=True, hide_index=True)
-
-        with col2:
-            st.markdown("**💻 dim_pc** *(Dimensi PC)*")
-            pc_schema = pd.DataFrame({
-                'Kolom'     : ['pc_id','pc_number','specs'],
-                'Keterangan': ['PK (sama dengan OLTP)','Nomor PC','Spesifikasi PC']
-            })
-            st.dataframe(pc_schema, use_container_width=True, hide_index=True)
-
-            st.markdown("**📦 dim_package** *(Dimensi Paket)*")
-            pkg_schema = pd.DataFrame({
-                'Kolom'     : ['package_id','duration_minutes','duration_label','price_per_minute'],
-                'Keterangan': ['PK','Durasi dalam menit','Label durasi (mis. 2 Jam)',
-                               'Harga per menit (Rp)']
-            })
-            st.dataframe(pkg_schema, use_container_width=True, hide_index=True)
-
-            st.markdown("**📋 etl_log** *(Audit Trail ETL)*")
-            log_schema = pd.DataFrame({
-                'Kolom'     : ['log_id','run_timestamp','rows_extracted',
-                               'rows_transformed','rows_loaded','status','message'],
-                'Keterangan': ['PK','Waktu eksekusi','Baris diekstrak',
-                               'Baris ditransformasi','Baris dimuat',
-                               'success / error','Pesan hasil']
-            })
-            st.dataframe(log_schema, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.markdown("**🔗 Relasi Star Schema:**")
-        st.code("""
-        dim_time ──────┐
-                       │
-        dim_pc ────────┼──── fact_sessions
-                       │
-        dim_package ───┘
-        """, language=None)
-
-    with tab_log:
-        st.subheader("📋 Riwayat Eksekusi ETL")
-
-        log_df = etl.query_etl_log()
-
-        if log_df.empty:
-            st.info("Belum ada riwayat ETL. Jalankan ETL terlebih dahulu.")
-        else:
-            for _, row in log_df.iterrows():
-                icon = "✅" if row['status'] == 'success' else "❌"
-                with st.expander(f"{icon} {row['run_timestamp']} — {row['message'][:60]}..."):
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Diekstrak", row['rows_extracted'])
-                    with col2:
-                        st.metric("Ditransformasi", row['rows_transformed'])
-                    with col3:
-                        st.metric("Dimuat", row['rows_loaded'])
-                    st.caption(f"Status: **{row['status']}** | {row['message']}")
